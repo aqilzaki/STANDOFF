@@ -2,137 +2,155 @@
 //  TutorialOverlayNode.swift
 //  aqil.game
 //
-//  Created by muhammad aqil zaki on 08/09/26.
-//
-
-
-//
-//  TutorialOverlay.swift
-//  aqil.game
-//
 import SpriteKit
+
+enum CowboyTutorialStep: Equatable {
+    case dodgeRight
+    case dodgeLeft
+    case feintReaction
+    case perfectDodge
+    case completed
+}
 
 class TutorialOverlayNode: SKNode {
     
-    private var tutorialBox: SKShapeNode!
-    private var titleLabel: SKLabelNode!
-    private var descLabel: SKLabelNode!
-    private var promptLabel: SKLabelNode!
-    private var handHint: SKLabelNode!
+    private var bannerPill: SKShapeNode!
+    private var actionLabel: SKLabelNode!
+    private var subLabel: SKLabelNode!
+    
+    private var swipeGuideNode: SKNode!
+    private var swipePathNode: SKShapeNode!
+    private var swipeFingerDot: SKShapeNode!
+    private var arrowHead: SKShapeNode!
+    
+    private let dodgeDistance: CGFloat = 52.0
     
     init(size: CGSize) {
         super.init()
         zPosition = 180
         alpha = 0.0
         
-        let dimLayer = SKShapeNode(rectOf: size)
-        dimLayer.fillColor = SKColor.black.withAlphaComponent(0.68)
-        dimLayer.strokeColor = .clear
-        dimLayer.position = CGPoint(x: size.width / 2, y: size.height / 2)
-        addChild(dimLayer)
-        
-        let boxWidth = size.width * 0.88
-        let boxHeight: CGFloat = 140
-        tutorialBox = SKShapeNode(rectOf: CGSize(width: boxWidth, height: boxHeight), cornerRadius: 16)
-        tutorialBox.fillColor = SKColor(white: 0.12, alpha: 0.95)
-        tutorialBox.strokeColor = .systemYellow
-        tutorialBox.lineWidth = 2.0
-        tutorialBox.position = CGPoint(x: size.width / 2, y: size.height * 0.70)
-        addChild(tutorialBox)
-        
-        titleLabel = SKLabelNode(fontNamed: "HelveticaNeue-Black")
-        titleLabel.fontSize = 17
-        titleLabel.fontColor = .systemYellow
-        titleLabel.position = CGPoint(x: 0, y: 35)
-        tutorialBox.addChild(titleLabel)
-        
-        descLabel = SKLabelNode(fontNamed: "HelveticaNeue-Medium")
-        descLabel.fontSize = 13.5
-        descLabel.numberOfLines = 3
-        descLabel.fontColor = .white
-        descLabel.position = CGPoint(x: 0, y: -8)
-        tutorialBox.addChild(descLabel)
-        
-        promptLabel = SKLabelNode(fontNamed: "HelveticaNeue-Bold")
-        promptLabel.fontSize = 14
-        promptLabel.fontColor = .systemGreen
-        promptLabel.position = CGPoint(x: 0, y: -50)
-        tutorialBox.addChild(promptLabel)
-        
-        handHint = SKLabelNode(fontNamed: "HelveticaNeue-Black")
-        handHint.fontSize = 42
-        addChild(handHint)
-        
-        let bounce = SKAction.repeatForever(SKAction.sequence([
-            SKAction.scale(to: 1.25, duration: 0.35),
-            SKAction.scale(to: 1.0, duration: 0.35)
-        ]))
-        handHint.run(bounce)
+        setupSimpleBanner(screenSize: size)
+        setupSwipeGuide()
     }
     
     required init?(coder aDecoder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
     
-    func showParryPrompt(step: TutorialStep, screenSize: CGSize) {
-        removeAllActions()
-        run(SKAction.fadeIn(withDuration: 0.2))
-        let midX = screenSize.width / 2.0
+    private func setupSimpleBanner(screenSize: CGSize) {
+        let bannerWidth = min(280.0, screenSize.width * 0.78)
+        let bannerHeight: CGFloat = 64.0
         
-        if step == .parryRight {
-            titleLabel.text = "TUTORIAL 1/4: PARRY KANAN"
-            descLabel.text = "Lawan menyerang dari KIRI ke KANAN!\nPedang kita harus menyambut menyilang ke kanan."
-            promptLabel.text = "👉 TAP LAYAR KANAN SEKARANG!"
-            promptLabel.fontColor = .systemYellow
-            handHint.text = "👉"
-            handHint.position = CGPoint(x: midX + 85, y: screenSize.height * 0.32)
-        } else {
-            titleLabel.text = "TUTORIAL 2/4: PARRY KIRI"
-            descLabel.text = "Lawan menyerang dari KANAN ke KIRI!\nPedang kita menyambut menyilang ke kiri."
-            promptLabel.text = "👈 TAP LAYAR KIRI SEKARANG!"
-            promptLabel.fontColor = .systemYellow
-            handHint.text = "👈"
-            handHint.position = CGPoint(x: midX - 85, y: screenSize.height * 0.32)
-        }
+        bannerPill = SKShapeNode(rectOf: CGSize(width: bannerWidth, height: bannerHeight), cornerRadius: 16)
+        bannerPill.fillColor = SKColor(red: 0.14, green: 0.10, blue: 0.08, alpha: 0.94)
+        bannerPill.strokeColor = SKColor(red: 0.90, green: 0.75, blue: 0.40, alpha: 0.90)
+        bannerPill.lineWidth = 2.0
+        bannerPill.position = CGPoint(x: screenSize.width / 2, y: screenSize.height - 115)
+        addChild(bannerPill)
+        
+        actionLabel = SKLabelNode(fontNamed: "HelveticaNeue-Black")
+        actionLabel.fontSize = 20
+        actionLabel.fontColor = .white
+        actionLabel.position = CGPoint(x: 0, y: 3)
+        bannerPill.addChild(actionLabel)
+        
+        subLabel = SKLabelNode(fontNamed: "HelveticaNeue-Bold")
+        subLabel.fontSize = 11
+        subLabel.fontColor = SKColor(red: 0.90, green: 0.75, blue: 0.40, alpha: 1.0)
+        subLabel.position = CGPoint(x: 0, y: -18)
+        bannerPill.addChild(subLabel)
     }
     
-    func showHoldPrompt(step: TutorialStep, screenSize: CGSize) {
-        removeAllActions()
-        run(SKAction.fadeIn(withDuration: 0.2))
-        let midX = screenSize.width / 2.0
+    private func setupSwipeGuide() {
+        swipeGuideNode = SKNode()
+        swipeGuideNode.zPosition = 60
+        addChild(swipeGuideNode)
         
-        if step == .holdRight {
-            titleLabel.text = "TUTORIAL 3/4: BLOK KANAN (HOLD)"
-            descLabel.text = "Lawan BELUM menyerang!\nPasang kuda-kuda nangkis duluan di sisi kanan."
-            promptLabel.text = "👉 TAHAN (HOLD) JARI DI SISI KANAN SEKARANG!"
-            promptLabel.fontColor = .systemCyan
-            handHint.text = "👉"
-            handHint.position = CGPoint(x: midX + 85, y: screenSize.height * 0.32)
-        } else {
-            titleLabel.text = "TUTORIAL 4/4: BLOK KIRI (HOLD)"
-            descLabel.text = "Lawan BELUM menyerang!\nPasang kuda-kuda nangkis duluan di sisi kiri."
-            promptLabel.text = "👈 TAHAN (HOLD) JARI DI SISI KIRI SEKARANG!"
-            promptLabel.fontColor = .systemCyan
-            handHint.text = "👈"
-            handHint.position = CGPoint(x: midX - 85, y: screenSize.height * 0.32)
-        }
+        swipePathNode = SKShapeNode()
+        swipePathNode.lineWidth = 4.0
+        swipePathNode.strokeColor = SKColor(red: 0.95, green: 0.80, blue: 0.30, alpha: 0.85)
+        swipePathNode.lineCap = .round
+        swipeGuideNode.addChild(swipePathNode)
+        
+        swipeFingerDot = SKShapeNode(circleOfRadius: 8.5)
+        swipeFingerDot.fillColor = SKColor(red: 0.98, green: 0.88, blue: 0.45, alpha: 1.0)
+        swipeFingerDot.strokeColor = .white
+        swipeFingerDot.lineWidth = 2.0
+        swipeGuideNode.addChild(swipeFingerDot)
+        
+        arrowHead = SKShapeNode()
+        arrowHead.fillColor = SKColor(red: 0.98, green: 0.88, blue: 0.45, alpha: 1.0)
+        arrowHead.strokeColor = .clear
+        swipeGuideNode.addChild(arrowHead)
     }
     
-    func updatePromptText(_ text: String, color: SKColor) {
-        promptLabel.text = text
-        promptLabel.fontColor = color
+    func showFreezePrompt(action: String, sub: String, isRight: Bool, screenSize: CGSize) {
+        removeAllActions()
+        run(SKAction.fadeIn(withDuration: 0.15))
+        
+        actionLabel.text = action
+        subLabel.text = sub
+        
+        bannerPill.run(SKAction.sequence([
+            SKAction.scale(to: 1.08, duration: 0.08),
+            SKAction.scale(to: 1.0, duration: 0.08)
+        ]))
+        
+        let midX = screenSize.width / 2.0
+        let playerY: CGFloat = 140.0
+        let targetX = midX + (isRight ? dodgeDistance : -dodgeDistance)
+        
+        animateSwipeArc(from: CGPoint(x: midX, y: playerY), to: CGPoint(x: targetX, y: playerY + 16), isRight: isRight)
+    }
+    
+    private func animateSwipeArc(from start: CGPoint, to end: CGPoint, isRight: Bool) {
+        swipeGuideNode.alpha = 1.0
+        swipeGuideNode.removeAllActions()
+        
+        let path = UIBezierPath()
+        let controlPoint = CGPoint(x: (start.x + end.x) / 2.0, y: start.y + 35.0)
+        path.move(to: start)
+        path.addQuadCurve(to: end, controlPoint: controlPoint)
+        swipePathNode.path = path.cgPath
+        
+        let arrowPath = UIBezierPath()
+        let arrowSize: CGFloat = 7.0
+        let angle: CGFloat = isRight ? 0.35 : (.pi - 0.35)
+        arrowPath.move(to: end)
+        arrowPath.addLine(to: CGPoint(x: end.x - cos(angle - 0.5) * arrowSize * 2,
+                                      y: end.y - sin(angle - 0.5) * arrowSize * 2))
+        arrowPath.addLine(to: CGPoint(x: end.x - cos(angle + 0.5) * arrowSize * 2,
+                                      y: end.y - sin(angle + 0.5) * arrowSize * 2))
+        arrowPath.close()
+        arrowHead.path = arrowPath.cgPath
+        
+        let animate = SKAction.customAction(withDuration: 0.55) { [weak self] _, time in
+            guard let self = self else { return }
+            let t = time / 0.55
+            let oneMinusT = 1.0 - t
+            let posX = oneMinusT * oneMinusT * start.x + 2 * oneMinusT * t * controlPoint.x + t * t * end.x
+            let posY = oneMinusT * oneMinusT * start.y + 2 * oneMinusT * t * controlPoint.y + t * t * end.y
+            self.swipeFingerDot.position = CGPoint(x: posX, y: posY)
+        }
+        
+        swipeGuideNode.run(SKAction.repeatForever(SKAction.sequence([
+            animate,
+            SKAction.wait(forDuration: 0.2)
+        ])))
     }
     
     func hide() {
         removeAllActions()
-        alpha = 0.0
+        swipeGuideNode.removeAllActions()
+        run(SKAction.fadeOut(withDuration: 0.15))
     }
     
-    func shakeBox() {
-        tutorialBox.run(SKAction.sequence([
-            SKAction.moveBy(x: -10, y: 0, duration: 0.03),
-            SKAction.moveBy(x: 20, y: 0, duration: 0.03),
-            SKAction.moveBy(x: -10, y: 0, duration: 0.03)
+    func shakeBanner() {
+        bannerPill.run(SKAction.sequence([
+            SKAction.moveBy(x: -8, y: 0, duration: 0.03),
+            SKAction.moveBy(x: 16, y: 0, duration: 0.03),
+            SKAction.moveBy(x: -8, y: 0, duration: 0.03)
         ]))
     }
 }

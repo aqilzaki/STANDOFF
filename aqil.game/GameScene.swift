@@ -9,60 +9,86 @@ class GameScene: SKScene {
     
     private enum FlowState: Equatable {
         case onboarding
-        case tutorial(step: TutorialStep)
+        case tutorial(step: CowboyTutorialStep)
         case playing
         case gameOver
     }
     
-    // Nodes & Sprites
-    private var playerBodySprite: SKSpriteNode?
-    private var playerSwordRoot: SKNode!
-    private var playerSwordSprite: SKSpriteNode!
-    private var enemySprite: SKSpriteNode!
-    private var enemySwordSprite: SKSpriteNode!
-    private var bloodVignetteSprite: SKSpriteNode!
+    private enum DuelPhase {
+        case standoff
+        case handApproaching
+        case shooting
+    }
     
-    // Modul UI & Overlay
+    private enum ShootSide {
+        case left
+        case right
+        var opposite: ShootSide { self == .left ? .right : .left }
+    }
+    
+    private enum FeintBehavior {
+        case none
+        case trueSwitch
+        case fakeHesitation
+    }
+    
+    // Nodes Karakter & Efek
+    private var enemyCowboy: CowboyNode!
+    private var playerCowboy: CowboyNode!
+    private var bloodVignetteSprite: SKSpriteNode!
+    private var flashOverlay: SKShapeNode!
+    
+    // Modul UI (Masing-masing di file terpisah)
+    private var welcomeOverlay: WelcomeOverlayNode?
     private var tutorialOverlay: TutorialOverlayNode!
     private var gameOverOverlay: GameOverOverlayNode?
     
-    // Texture Caching
-    private var idleTexture: SKTexture!
-    private var tiltTextures: [SKTexture] = []
-    private var returnTextures: [SKTexture] = []
-    private var enemyIdleTextures: [SKTexture] = []
-    private var enemyWindupBodyTextures: [SKTexture] = []
-    private var enemySlashBodyTextures: [SKTexture] = []
-    private var enemyWindupTextures: [SKTexture] = []
-    private var enemySlashTextures: [SKTexture] = []
-    private var gameOverBannerTextures: [SKTexture] = []
-    
-    // State Game
+    // State Duel
     private var flowState: FlowState = .onboarding
+    private var duelPhase: DuelPhase = .standoff
+    private var currentAimSide: ShootSide = .left
+    private var currentFeintBehavior: FeintBehavior = .none
+    private var playerDodgedSide: ShootSide? = nil
+    
+    private let dodgeOffsetDistance: CGFloat = 52.0
+    
+    // State Tutorial
     private var isTutorialFrozen: Bool = false
-    private var duelPhase: DuelPhase = .idleStance
-    private var currentAttack: AttackDirection = .rightToLeft
-    private var isFeintAttack: Bool = false
-    private var isPlayerTilting: Bool = false
+    private var currentTutorialBullet: SKNode?
     
-    // Input State
-    private var isHoldingLeft: Bool = false
-    private var isHoldingRight: Bool = false
+    // Level Aktif
+    private var activeLevelConfig: LevelConfig = LevelSystem.levels.first!
     
-    // Score & Stats
-    private var playerLives: Int = GameSettings.maxPlayerLives { didSet { updateHeartsUI() } }
-    private var score: Int = 100 { didSet { scoreLabel.text = "\(score)" } }
+    // Timing Peluru & Dodge
+    private var bulletFiredTime: TimeInterval = 0
+    private var bulletFlightDuration: TimeInterval = 0.28
+    private var playerDodgeTime: TimeInterval = 0
+    private var isCloseCallDodge: Bool = false
+    private var hasDodgedThisRound: Bool = false
+    
+    // Input Swipe
+    private var touchStartPoint: CGPoint?
+    private var hasSwipedInCurrentTouch: Bool = false
+    private let minSwipeDistance: CGFloat = 26.0
+    
+    // Stats & Skor
+    private var playerLives: Int = 3 { didSet { updateHeartsUI() } }
+    private var score: Int = 0 { didSet { updateScoreUI() } }
     private var bestScore: Int = 0 { didSet { bestScoreLabel.text = "BEST: \(bestScore)" } }
-    private var comboCount: Int = 0 { didSet { comboLabel.text = comboCount > 1 ? "KOMBO x\(comboCount)" : "" } }
+    private var comboCount: Int = 0 {
+        didSet {
+            comboLabel.text = comboCount > 1 ? "KOMBO x\(comboCount)" : ""
+            comboLabel.fontColor = .systemYellow
+        }
+    }
     private var maxComboInRun: Int = 0
-    private var duelCount: Int = 0
+    private var totalDuels: Int = 0
     
-    // HUD Labels
+    // HUD Nodes Minimalis
     private let scoreLabel = SKLabelNode(fontNamed: "HelveticaNeue-Black")
     private let bestScoreLabel = SKLabelNode(fontNamed: "HelveticaNeue-Bold")
-    private let comboLabel = SKLabelNode(fontNamed: "HelveticaNeue-Bold")
-    private let statusLabel = SKLabelNode(fontNamed: "HelveticaNeue-Bold")
-    private let feedbackLabel = SKLabelNode(fontNamed: "HelveticaNeue-Black")
+    private let comboLabel = SKLabelNode(fontNamed: "HelveticaNeue-Black")
+    private let roundLabel = SKLabelNode(fontNamed: "HelveticaNeue-Bold")
     private let livesLabel = SKLabelNode(fontNamed: "HelveticaNeue-Black")
     
     // Haptics
@@ -70,140 +96,67 @@ class GameScene: SKScene {
     private let heavyHaptic = UIImpactFeedbackGenerator(style: .heavy)
     private let notificationHaptic = UINotificationFeedbackGenerator()
     
+    // MARK: - Lifecycle
     override func didMove(to view: SKView) {
-        backgroundColor = SKColor(white: 0.08, alpha: 1.0)
-        view.isMultipleTouchEnabled = true
+        backgroundColor = SKColor(red: 0.94, green: 0.91, blue: 0.85, alpha: 1.0)
+        view.isMultipleTouchEnabled = false
         
         lightHaptic.prepare()
         heavyHaptic.prepare()
         notificationHaptic.prepare()
         
-        bestScore = UserDefaults.standard.integer(forKey: "BestKatanaParryScore")
+        bestScore = UserDefaults.standard.integer(forKey: "BestCowboyDodgeScore")
         
-        setupBackground()
-        setupBloodVignette()
-        setupPlayerBlade()
-        setupPlayerCharacter()
-        setupGameOverTextures()
-        setupEnemyFighter()
-        setupEnemySwordAnimation()
+        setupPaperBorder()
+        setupVisualOverlays()
+        setupCharacters()
         setupHUD()
         setupTutorial()
         updateHeartsUI()
         
         run(SKAction.sequence([
-            SKAction.wait(forDuration: 0.15),
-            SKAction.run { [weak self] in self?.showSimplePlayOnboarding() }
+            SKAction.wait(forDuration: 0.20),
+            SKAction.run { [weak self] in self?.showWelcomeScreen() }
         ]))
     }
     
-    private func setupGameOverTextures() {
-        gameOverBannerTextures = AnimationHelper.loadTextures(prefix: "ui_banner_gameover", from: 1, to: 4)
+    private func setupPaperBorder() {
+        let border = SKShapeNode(rect: CGRect(x: 18, y: 25, width: size.width - 36, height: size.height - 50))
+        border.strokeColor = SKColor(white: 0.3, alpha: 0.35)
+        border.lineWidth = 2.0
+        border.zPosition = -1
+        addChild(border)
     }
     
-    private func setupBackground() {
-        let texture = SKTexture(imageNamed: GameAssets.backgroundImage)
-        texture.filteringMode = .nearest
-        let maxScale = max(size.width / texture.size().width, size.height / texture.size().height)
-        let bg = SKSpriteNode(texture: texture)
-        bg.size = CGSize(width: texture.size().width * maxScale, height: texture.size().height * maxScale)
-        bg.position = CGPoint(x: size.width / 2, y: size.height / 2)
-        bg.zPosition = -5
-        addChild(bg)
-    }
-    
-    private func setupBloodVignette() {
-        let texture = CombatEffects.generateBloodVignetteTexture(screenSize: size)
-        bloodVignetteSprite = SKSpriteNode(texture: texture, size: size)
+    private func setupVisualOverlays() {
+        let bloodTexture = BloodVignetteHelper.generateTexture(screenSize: size)
+        bloodVignetteSprite = SKSpriteNode(texture: bloodTexture, size: size)
         bloodVignetteSprite.position = CGPoint(x: size.width / 2, y: size.height / 2)
         bloodVignetteSprite.zPosition = 85
         bloodVignetteSprite.alpha = 0.0
         addChild(bloodVignetteSprite)
+        
+        flashOverlay = SKShapeNode(rectOf: size)
+        flashOverlay.position = CGPoint(x: size.width / 2, y: size.height / 2)
+        flashOverlay.fillColor = SKColor.white.withAlphaComponent(0.50)
+        flashOverlay.strokeColor = .clear
+        flashOverlay.zPosition = 86
+        flashOverlay.alpha = 0.0
+        addChild(flashOverlay)
     }
     
-    private func setupPlayerCharacter() {
-        let body = SKSpriteNode(imageNamed: GameAssets.playerBodyImage)
-        body.texture?.filteringMode = .nearest
-        body.anchorPoint = CGPoint(x: 0.5, y: 0.0)
-        body.position = CGPoint(x: size.width / 2, y: GameSettings.playerBodyBaseY)
-        body.setScale(GameAssets.playerBodyScale)
-        body.alpha = GameAssets.playerBodyAlpha
-        body.zPosition = 30
-        addChild(body)
-        self.playerBodySprite = body
-    }
-    
-    private func setupPlayerBlade() {
-        playerSwordRoot = SKNode()
-        playerSwordRoot.position = CGPoint(x: size.width / 2, y: 100)
-        playerSwordRoot.zPosition = 27
-        addChild(playerSwordRoot)
+    private func setupCharacters() {
+        enemyCowboy = CowboyNode(color: .black)
+        enemyCowboy.position = CGPoint(x: size.width / 2, y: size.height * 0.68)
+        enemyCowboy.setScale(1.35)
+        enemyCowboy.zPosition = 20
+        addChild(enemyCowboy)
         
-        let atlas = SKTextureAtlas(named: GameAssets.playerSwordAtlas)
-        idleTexture = atlas.textureNamed("player_katana_idle1")
-        idleTexture.filteringMode = .nearest
-        
-        tiltTextures = [atlas.textureNamed("player_katana_idle2"), atlas.textureNamed("player_katana_idle3"), atlas.textureNamed("player_katana_idle4")]
-        for t in tiltTextures { t.filteringMode = .nearest }
-        returnTextures = [tiltTextures[1], tiltTextures[0], idleTexture]
-        
-        let swordHeight: CGFloat = 280.0
-        let swordWidth = swordHeight * (idleTexture.size().width / idleTexture.size().height)
-        playerSwordSprite = SKSpriteNode(texture: idleTexture, size: CGSize(width: swordWidth, height: swordHeight))
-        playerSwordSprite.anchorPoint = CGPoint(x: 0.5, y: 0.0)
-        playerSwordSprite.position = .zero
-        playerSwordRoot.addChild(playerSwordSprite)
-        
-        startSwordIdleAnimation()
-    }
-    
-    private func startSwordIdleAnimation() {
-        guard let sword = playerSwordSprite, !isPlayerTilting else { return }
-        sword.removeAction(forKey: "idleBob")
-        let bobbing = SKAction.repeatForever(SKAction.sequence([
-            SKAction.moveBy(x: 0, y: 5, duration: 1.1),
-            SKAction.moveBy(x: 0, y: -5, duration: 1.1)
-        ]))
-        sword.run(bobbing, withKey: "idleBob")
-    }
-    
-    private func setupEnemyFighter() {
-        enemyIdleTextures = AnimationHelper.loadTextures(prefix: "enemy", from: 1, to: 2)
-        enemyWindupBodyTextures = AnimationHelper.loadTextures(prefix: "enemy", from: 3, to: 4)
-        enemySlashBodyTextures = AnimationHelper.loadTextures(prefix: "enemy", from: 5, to: 6)
-        
-        guard let firstFrame = enemyIdleTextures.first else { return }
-        enemySprite = SKSpriteNode(texture: firstFrame)
-        enemySprite.anchorPoint = CGPoint(x: 0.5, y: 0.0)
-        enemySprite.position = CGPoint(x: size.width / 2, y: size.height * GameSettings.enemyPositionYRatio)
-        enemySprite.setScale(GameSettings.enemyScale)
-        enemySprite.zPosition = 10
-        addChild(enemySprite)
-        
-        startEnemyIdleAnimation()
-    }
-    
-    private func startEnemyIdleAnimation() {
-        guard let enemy = enemySprite else { return }
-        enemy.removeAction(forKey: "enemyIdle")
-        let breathe = SKAction.repeatForever(
-            SKAction.animate(with: enemyIdleTextures, timePerFrame: 0.35, resize: false, restore: false)
-        )
-        enemy.run(breathe, withKey: "enemyIdle")
-    }
-    
-    private func setupEnemySwordAnimation() {
-        enemyWindupTextures = AnimationHelper.loadTextures(prefix: "slashing_right_side", from: 2, to: 7)
-        enemySlashTextures = AnimationHelper.loadTextures(prefix: "slashing_right_side", from: 8, to: 10)
-        
-        guard let firstFrame = enemyWindupTextures.first else { return }
-        enemySwordSprite = SKSpriteNode(texture: firstFrame)
-        enemySwordSprite.anchorPoint = CGPoint(x: 0.5, y: 0.5)
-        enemySwordSprite.position = CGPoint(x: size.width / 2, y: size.height * 0.42)
-        enemySwordSprite.zPosition = 25
-        enemySwordSprite.setScale(GameSettings.enemySwordScale)
-        enemySwordSprite.isHidden = true
-        addChild(enemySwordSprite)
+        playerCowboy = CowboyNode(color: SKColor(white: 0.12, alpha: 1.0))
+        playerCowboy.position = CGPoint(x: size.width / 2, y: 140)
+        playerCowboy.setScale(1.75)
+        playerCowboy.zPosition = 25
+        addChild(playerCowboy)
     }
     
     private func setupHUD() {
@@ -212,14 +165,14 @@ class GameScene: SKScene {
         
         bestScoreLabel.text = "BEST: \(bestScore)"
         bestScoreLabel.fontSize = 13
-        bestScoreLabel.fontColor = .systemYellow
+        bestScoreLabel.fontColor = .systemBrown
         bestScoreLabel.horizontalAlignmentMode = .left
         bestScoreLabel.position = CGPoint(x: sideMargin, y: size.height - topMargin)
         bestScoreLabel.zPosition = 100
         addChild(bestScoreLabel)
         
         livesLabel.text = "♥♥♥"
-        livesLabel.fontSize = 16
+        livesLabel.fontSize = 18
         livesLabel.fontColor = .systemRed
         livesLabel.horizontalAlignmentMode = .right
         livesLabel.position = CGPoint(x: size.width - sideMargin, y: size.height - topMargin)
@@ -227,63 +180,24 @@ class GameScene: SKScene {
         addChild(livesLabel)
         
         scoreLabel.text = "\(score)"
-        scoreLabel.fontSize = 50
-        scoreLabel.fontColor = .white
-        scoreLabel.position = CGPoint(x: size.width / 2, y: size.height - topMargin - 50)
+        scoreLabel.fontSize = 46
+        scoreLabel.fontColor = .black
+        scoreLabel.position = CGPoint(x: size.width / 2, y: size.height - topMargin - 45)
         scoreLabel.zPosition = 100
         addChild(scoreLabel)
         
+        roundLabel.text = "RONDE 1"
+        roundLabel.fontSize = 13
+        roundLabel.fontColor = SKColor(white: 0.40, alpha: 1.0)
+        roundLabel.position = CGPoint(x: size.width / 2, y: size.height - topMargin - 70)
+        roundLabel.zPosition = 100
+        addChild(roundLabel)
+        
         comboLabel.text = ""
         comboLabel.fontSize = 15
-        comboLabel.fontColor = .systemOrange
-        comboLabel.position = CGPoint(x: size.width / 2, y: size.height - topMargin - 85)
+        comboLabel.position = CGPoint(x: size.width / 2, y: size.height - topMargin - 90)
         comboLabel.zPosition = 100
         addChild(comboLabel)
-        
-        statusLabel.text = "BERSIAP..."
-        statusLabel.fontSize = 13
-        statusLabel.fontColor = SKColor(white: 0.7, alpha: 1.0)
-        statusLabel.position = CGPoint(x: size.width / 2, y: size.height - topMargin - 108)
-        statusLabel.zPosition = 100
-        addChild(statusLabel)
-        
-        feedbackLabel.text = ""
-        feedbackLabel.fontSize = 26
-        feedbackLabel.position = CGPoint(x: size.width / 2, y: size.height * 0.52)
-        feedbackLabel.zPosition = 120
-        addChild(feedbackLabel)
-    }
-    
-    private func updateHeartsUI() {
-        var hearts = ""
-        for i in 1...GameSettings.maxPlayerLives { hearts += (i <= playerLives) ? "♥ " : "♡ " }
-        livesLabel.text = hearts.trimmingCharacters(in: .whitespaces)
-        livesLabel.fontColor = (playerLives == 3) ? .systemGreen : ((playerLives == 2) ? .systemYellow : .systemRed)
-        updateBloodVignette()
-    }
-    
-    private func updateBloodVignette() {
-        bloodVignetteSprite.removeAllActions()
-        switch playerLives {
-        case 3: bloodVignetteSprite.run(SKAction.fadeOut(withDuration: 0.35))
-        case 2: bloodVignetteSprite.run(SKAction.fadeAlpha(to: 0.75, duration: 0.25))
-        case 1:
-            let pulse = SKAction.repeatForever(SKAction.sequence([
-                SKAction.fadeAlpha(to: 1.0, duration: 0.30),
-                SKAction.fadeAlpha(to: 0.65, duration: 0.40)
-            ]))
-            bloodVignetteSprite.run(pulse)
-        default: bloodVignetteSprite.alpha = 1.0
-        }
-    }
-    
-    private func triggerBloodImpact() {
-        bloodVignetteSprite.removeAllActions()
-        bloodVignetteSprite.run(SKAction.sequence([
-            SKAction.fadeAlpha(to: 1.0, duration: 0.03),
-            SKAction.wait(forDuration: 0.12),
-            SKAction.run { [weak self] in self?.updateBloodVignette() }
-        ]))
     }
     
     private func setupTutorial() {
@@ -291,596 +205,824 @@ class GameScene: SKScene {
         addChild(tutorialOverlay)
     }
     
-    // MARK: - Native Onboarding
-    private func showSimplePlayOnboarding() {
-        flowState = .onboarding
-        presentNativeAlert(title: "KATANA CLASH", message: "Tangkis dan potong silang tebasan pedang musuh!", actionTitle: "PLAY") { [weak self] in
-            self?.startTutorialFlow()
-        }
-    }
-    
-    private func presentNativeAlert(title: String, message: String, actionTitle: String, handler: @escaping () -> Void) {
-        DispatchQueue.main.async { [weak self] in
-            guard let view = self?.view else { return }
-            var responder: UIResponder? = view
-            while responder != nil {
-                if let vc = responder as? UIViewController {
-                    let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
-                    alert.addAction(UIAlertAction(title: actionTitle, style: .default) { _ in handler() })
-                    var topVC = vc
-                    while let presented = topVC.presentedViewController { topVC = presented }
-                    topVC.present(alert, animated: true)
-                    return
-                }
-                responder = responder?.next
-            }
-        }
-    }
-    
-    // MARK: - Tutorial Flow
-    private func startTutorialFlow() {
-        flowState = .tutorial(step: .parryRight)
-        statusLabel.text = "TUTORIAL DIMULAI..."
-        statusLabel.fontColor = .systemYellow
+    private func updateHeartsUI() {
+        var hearts = ""
+        for i in 1...3 { hearts += (i <= playerLives) ? "♥ " : "♡ " }
+        livesLabel.text = hearts.trimmingCharacters(in: .whitespaces)
+        livesLabel.fontColor = (playerLives == 3) ? .systemGreen : ((playerLives == 2) ? .systemYellow : .systemRed)
         
-        run(SKAction.sequence([
-            SKAction.wait(forDuration: 0.6),
-            SKAction.run { [weak self] in self?.executeTutorialStep(step: .parryRight) }
+        updateBloodVignetteState()
+    }
+    
+    private func updateBloodVignetteState() {
+        bloodVignetteSprite.removeAllActions()
+        switch playerLives {
+        case 3:
+            bloodVignetteSprite.run(SKAction.fadeOut(withDuration: 0.35))
+        case 2:
+            bloodVignetteSprite.run(SKAction.fadeAlpha(to: 0.58, duration: 0.25))
+        case 1:
+            let heartbeat = SKAction.repeatForever(SKAction.sequence([
+                SKAction.fadeAlpha(to: 1.0, duration: 0.35),
+                SKAction.fadeAlpha(to: 0.52, duration: 0.45)
+            ]))
+            bloodVignetteSprite.run(heartbeat)
+        default:
+            bloodVignetteSprite.alpha = 1.0
+        }
+    }
+    
+    private func updateScoreUI() {
+        scoreLabel.text = "\(score)"
+        scoreLabel.run(SKAction.sequence([
+            SKAction.scale(to: 1.15, duration: 0.08),
+            SKAction.scale(to: 1.0, duration: 0.1)
         ]))
     }
     
-    private func executeTutorialStep(step: TutorialStep) {
+    // MARK: - Welcome & Tutorial Flow
+    private func showWelcomeScreen() {
+        flowState = .onboarding
+        welcomeOverlay?.removeFromParent()
+        
+        let overlay = WelcomeOverlayNode(size: size) { [weak self] in
+            self?.startTutorialFlow()
+        }
+        addChild(overlay)
+        self.welcomeOverlay = overlay
+    }
+    
+    private func startTutorialFlow() {
+        roundLabel.text = "TUTORIAL"
+        run(SKAction.sequence([
+            SKAction.wait(forDuration: 0.5),
+            SKAction.run { [weak self] in self?.executeTutorialStep(step: .dodgeRight) }
+        ]))
+    }
+    
+    private func executeTutorialStep(step: CowboyTutorialStep) {
         flowState = .tutorial(step: step)
+        playerDodgedSide = nil
+        hasDodgedThisRound = false
+        hasSwipedInCurrentTouch = false
         isTutorialFrozen = false
+        
+        currentTutorialBullet?.removeFromParent()
+        currentTutorialBullet = nil
+        
+        stopEnemyIdleBreathing()
+        enemyCowboy.setArmsToWideStance()
+        playerCowboy.run(SKAction.move(to: CGPoint(x: size.width / 2, y: 140), duration: 0.15))
         tutorialOverlay.hide()
-        returnPlayerSwordToNeutral()
         
         switch step {
-        case .parryRight:
-            currentAttack = .leftToRight
-            statusLabel.text = "TUTORIAL 1/4: PARRY KANAN"
-            statusLabel.fontColor = .systemOrange
-            launchParryTutorialAttack(step: step)
-        case .parryLeft:
-            currentAttack = .rightToLeft
-            statusLabel.text = "TUTORIAL 2/4: PARRY KIRI"
-            statusLabel.fontColor = .systemOrange
-            launchParryTutorialAttack(step: step)
-        case .holdRight:
-            currentAttack = .leftToRight
-            statusLabel.text = "TUTORIAL 3/4: BLOK KANAN (HOLD)"
-            statusLabel.fontColor = .systemCyan
-            startHoldTutorial(step: step)
-        case .holdLeft:
-            currentAttack = .rightToLeft
-            statusLabel.text = "TUTORIAL 4/4: BLOK KIRI (HOLD)"
-            statusLabel.fontColor = .systemCyan
-            startHoldTutorial(step: step)
+        case .dodgeRight:
+            currentAimSide = .left
+            enemyCowboy.animateApproachWithShoulderShift(isLeft: true, duration: 0.35) { [weak self] in
+                guard let self = self else { return }
+                self.enemyCowboy.drawGunAndShoot(isLeft: true)
+                self.triggerEnemyFireJuice(fromLeft: true)
+                self.launchTutorialBulletWithFreeze(fromLeft: true, freezeY: 280, promptAction: "SWIPE KANAN ➔", promptSub: "PELURU DI KIRI, LOMPAT KE KANAN!", isRightDodge: true)
+            }
+            
+        case .dodgeLeft:
+            currentAimSide = .right
+            enemyCowboy.animateApproachWithShoulderShift(isLeft: false, duration: 0.35) { [weak self] in
+                guard let self = self else { return }
+                self.enemyCowboy.drawGunAndShoot(isLeft: false)
+                self.triggerEnemyFireJuice(fromLeft: false)
+                self.launchTutorialBulletWithFreeze(fromLeft: false, freezeY: 280, promptAction: "⬅ SWIPE KIRI", promptSub: "PELURU DI KANAN, LOMPAT KE KIRI!", isRightDodge: false)
+            }
+            
+        case .feintReaction:
+            currentAimSide = .left
+            enemyCowboy.animateApproachWithShoulderShift(isLeft: true, duration: 0.45) { [weak self] in
+                guard let self = self else { return }
+                self.popEitssJuice()
+                self.heavyHaptic.impactOccurred(intensity: 0.6)
+                
+                self.enemyCowboy.snapSwitchHands(fromLeftToRight: true, duration: 0.18) {
+                    self.currentAimSide = .right
+                    self.enemyCowboy.drawGunAndShoot(isLeft: false)
+                    self.triggerEnemyFireJuice(fromLeft: false)
+                    self.launchTutorialBulletWithFreeze(fromLeft: false, freezeY: 260, promptAction: "⬅ SWIPE KIRI!", promptSub: "TIPUAN! TEMBAKAN PINDAH KE KANAN!", isRightDodge: false)
+                }
+            }
+            
+        case .perfectDodge:
+            currentAimSide = .left
+            enemyCowboy.animateApproachWithShoulderShift(isLeft: true, duration: 0.35) { [weak self] in
+                guard let self = self else { return }
+                self.enemyCowboy.drawGunAndShoot(isLeft: true)
+                self.triggerEnemyFireJuice(fromLeft: true)
+                self.launchTutorialBulletWithFreeze(fromLeft: true, freezeY: 175, promptAction: "⚡ SWIPE SEKARANG!", promptSub: "PELURU SANGAT DEKAT! KOMBO NAIK!", isRightDodge: true)
+            }
+            
         case .completed:
             completeTutorialAndStartGame()
         }
     }
     
-    private func launchParryTutorialAttack(step: TutorialStep) {
-        let isRightSide = (currentAttack == .rightToLeft)
-        enemySwordSprite.removeAllActions()
-        enemySwordSprite.xScale = isRightSide ? GameSettings.enemySwordScale : -GameSettings.enemySwordScale
-        enemySwordSprite.yScale = GameSettings.enemySwordScale
-        enemySwordSprite.position = CGPoint(x: size.width / 2, y: size.height * 0.42)
-        enemySwordSprite.texture = enemyWindupTextures.first
-        enemySwordSprite.alpha = 1.0
-        enemySwordSprite.isHidden = false
+    private func launchTutorialBulletWithFreeze(fromLeft: Bool, freezeY: CGFloat, promptAction: String, promptSub: String, isRightDodge: Bool) {
+        let bulletX = enemyCowboy.position.x + (fromLeft ? -22 : 22)
+        let startY = enemyCowboy.position.y - 18
         
-        let windup = AnimationHelper.createAction(textures: enemyWindupTextures, duration: 0.35)
-        enemySwordSprite.run(windup) { [weak self] in
+        let container = SKNode()
+        container.position = CGPoint(x: bulletX, y: startY)
+        container.zPosition = 35
+        addChild(container)
+        self.currentTutorialBullet = container
+        
+        let bullet = SKShapeNode(rectOf: CGSize(width: 3.5, height: 16), cornerRadius: 1.5)
+        bullet.fillColor = .black
+        bullet.strokeColor = .clear
+        container.addChild(bullet)
+        
+        let flyToFreeze = SKAction.move(to: CGPoint(x: bulletX, y: freezeY), duration: 0.20)
+        let onFreeze = SKAction.run { [weak self] in
             guard let self = self else { return }
-            self.duelPhase = .slashing
-            self.enemySwordSprite.texture = self.enemySlashTextures.first
-            let freezePos = CGPoint(x: self.size.width / 2, y: self.size.height * 0.35)
-            self.enemySwordSprite.run(SKAction.move(to: freezePos, duration: 0.12)) {
-                self.isTutorialFrozen = true
-                self.tutorialOverlay.showParryPrompt(step: step, screenSize: self.size)
+            self.isTutorialFrozen = true
+            self.lightHaptic.impactOccurred(intensity: 0.6)
+            self.tutorialOverlay.showFreezePrompt(action: promptAction, sub: promptSub, isRight: isRightDodge, screenSize: self.size)
+        }
+        container.run(SKAction.sequence([flyToFreeze, onFreeze]))
+    }
+    
+    private func handleTutorialSwipe(side: ShootSide, step: CowboyTutorialStep) {
+        guard isTutorialFrozen else { return }
+        
+        let isCorrect: Bool
+        switch step {
+        case .dodgeRight:    isCorrect = (side == .right)
+        case .dodgeLeft:     isCorrect = (side == .left)
+        case .feintReaction: isCorrect = (side == .left)
+        case .perfectDodge:  isCorrect = (side == .right)
+        case .completed:     return
+        }
+        
+        if isCorrect {
+            isTutorialFrozen = false
+            hasDodgedThisRound = true
+            tutorialOverlay.hide()
+            dodgePlayer(to: side)
+            
+            if step == .perfectDodge {
+                playerCowboy.playHatGrazedAnimation(isLeftBullet: currentAimSide == .left)
+                comboCount = 2
             }
-        }
-    }
-    
-    private func startHoldTutorial(step: TutorialStep) {
-        duelPhase = .idleStance
-        isTutorialFrozen = true
-        enemySwordSprite.removeAllActions()
-        enemySwordSprite.isHidden = true
-        tutorialOverlay.showHoldPrompt(step: step, screenSize: size)
-    }
-    
-    private func triggerEnemyAttackWhileHolding(step: TutorialStep, nextStep: TutorialStep) {
-        isTutorialFrozen = false
-        tutorialOverlay.updatePromptText("TETAP TAHAN! LAWAN MENYERANG...", color: .systemGreen)
-        let isRightSide = (step == .holdLeft)
-        
-        enemySwordSprite.removeAllActions()
-        enemySwordSprite.xScale = isRightSide ? GameSettings.enemySwordScale : -GameSettings.enemySwordScale
-        enemySwordSprite.yScale = GameSettings.enemySwordScale
-        enemySwordSprite.position = CGPoint(x: size.width / 2, y: size.height * 0.42)
-        enemySwordSprite.texture = enemySlashTextures.first
-        enemySwordSprite.alpha = 1.0
-        enemySwordSprite.isHidden = false
-        
-        let slashAnimation = AnimationHelper.createAction(textures: enemySlashTextures, duration: 0.24)
-        let moveAction = SKAction.move(to: CGPoint(x: size.width / 2, y: size.height * 0.32), duration: 0.24)
-        
-        enemySwordSprite.run(SKAction.group([slashAnimation, moveAction])) { [weak self] in
-            guard let self = self else { return }
-            self.tutorialOverlay.hide()
-            self.finishTutorialClash(isParry: false, nextStep: nextStep)
-        }
-    }
-    
-    private func finishTutorialClash(isParry: Bool, nextStep: TutorialStep) {
-        if isParry {
-            heavyHaptic.impactOccurred(intensity: 1.0)
+            
+            if let bulletNode = currentTutorialBullet {
+                let finishFly = SKAction.move(to: CGPoint(x: bulletNode.position.x, y: 110), duration: 0.12)
+                let groundHit = SKAction.run { [weak self] in
+                    guard let self = self else { return }
+                    self.spawnGroundImpactJuice(at: CGPoint(x: bulletNode.position.x, y: 110))
+                }
+                bulletNode.run(SKAction.sequence([finishFly, groundHit, SKAction.removeFromParent()]))
+                currentTutorialBullet = nil
+            }
+            
+            heavyHaptic.impactOccurred(intensity: 0.9)
             notificationHaptic.notificationOccurred(.success)
-            CombatEffects.flashScreen(color: .white, in: self)
             
-            let isLeftToRight = (currentAttack == .leftToRight)
-            let clashPoint = CGPoint(x: size.width / 2 + (isLeftToRight ? 22 : -22), y: size.height * 0.33)
-            CombatEffects.spawnSparks(at: clashPoint, in: self)
-            
-            showFeedback(text: "PERFECT PARRY!", color: .systemYellow)
-            statusLabel.text = "BERHASIL PARRY MENYILANG!"
-            statusLabel.fontColor = .systemYellow
-            
-            let knockback = SKAction.sequence([
-                SKAction.moveBy(x: isLeftToRight ? -45 : 45, y: 35, duration: 0.08),
-                SKAction.fadeOut(withDuration: 0.1)
-            ])
-            enemySwordSprite.run(knockback)
+            run(SKAction.sequence([
+                SKAction.wait(forDuration: 0.9),
+                SKAction.run { [weak self] in
+                    guard let self = self else { return }
+                    switch step {
+                    case .dodgeRight:    self.executeTutorialStep(step: .dodgeLeft)
+                    case .dodgeLeft:     self.executeTutorialStep(step: .feintReaction)
+                    case .feintReaction: self.executeTutorialStep(step: .perfectDodge)
+                    case .perfectDodge:  self.executeTutorialStep(step: .completed)
+                    case .completed: break
+                    }
+                }
+            ]))
         } else {
-            lightHaptic.impactOccurred(intensity: 0.7)
-            showFeedback(text: "BLOK BERHASIL (AMAN)!", color: .systemCyan)
-            statusLabel.text = "SERANGAN DITAHAN DULUAN!"
-            statusLabel.fontColor = .systemCyan
-            enemySwordSprite.run(SKAction.fadeOut(withDuration: 0.15))
+            lightHaptic.impactOccurred(intensity: 0.6)
+            tutorialOverlay.shakeBanner()
         }
-        
-        run(SKAction.sequence([
-            SKAction.wait(forDuration: 1.2),
-            SKAction.run { [weak self] in
-                guard let self = self else { return }
-                self.returnPlayerSwordToNeutral()
-                self.executeTutorialStep(step: nextStep)
-            }
-        ]))
     }
     
     private func completeTutorialAndStartGame() {
         tutorialOverlay.hide()
-        statusLabel.text = "TUTORIAL SELESAI!"
-        statusLabel.fontColor = .systemGreen
+        heavyHaptic.impactOccurred(intensity: 0.9)
+        notificationHaptic.notificationOccurred(.success)
         
-        presentNativeAlert(title: "⚔️ SIAP BERTARUNG!", message: "Tutorial selesai! Sekarang bertarunglah di duel yang sesungguhnya!", actionTitle: "MULAI DUEL") { [weak self] in
-            guard let self = self else { return }
-            self.flowState = .playing
-            self.score = 100
-            self.duelCount = 0
-            self.comboCount = 0
-            self.resetToIdle()
+        run(SKAction.sequence([
+            SKAction.wait(forDuration: 0.6),
+            SKAction.run { [weak self] in self?.startGame() }
+        ]))
+    }
+    
+    private func startGame() {
+        flowState = .playing
+        playerLives = 3
+        score = 0
+        totalDuels = 0
+        comboCount = 0
+        maxComboInRun = 0
+        activeLevelConfig = LevelSystem.levels.first!
+        updateBloodVignetteState()
+        resetStandoff()
+    }
+    
+    // MARK: - Siklus Duel Utama
+    private func resetStandoff() {
+        duelPhase = .standoff
+        playerDodgedSide = nil
+        hasDodgedThisRound = false
+        hasSwipedInCurrentTouch = false
+        touchStartPoint = nil
+        isCloseCallDodge = false
+        
+        let newLevel = LevelSystem.currentLevel(for: totalDuels)
+        activeLevelConfig = newLevel
+        
+        roundLabel.text = "RONDE \(totalDuels + 1)"
+        
+        removeAction(forKey: "duelTimer")
+        enemyCowboy.setArmsToWideStance()
+        playerCowboy.run(SKAction.move(to: CGPoint(x: size.width / 2, y: 140), duration: 0.15))
+        startEnemyIdleBreathing()
+        
+        let standoffDelay = Double.random(in: activeLevelConfig.standoffDelay)
+        run(SKAction.sequence([
+            SKAction.wait(forDuration: standoffDelay),
+            SKAction.run { [weak self] in
+                guard let self = self, self.flowState == .playing else { return }
+                self.startHandApproachingGun()
+            }
+        ]), withKey: "duelTimer")
+    }
+    
+    private func startHandApproachingGun() {
+        duelPhase = .handApproaching
+        stopEnemyIdleBreathing()
+        
+        currentAimSide = Bool.random() ? .left : .right
+        
+        let roll = Double.random(in: 0...1)
+        if roll < activeLevelConfig.feintChance {
+            currentFeintBehavior = .trueSwitch
+        } else if roll < (activeLevelConfig.feintChance + activeLevelConfig.fakeHesitationChance) {
+            currentFeintBehavior = .fakeHesitation
+        } else {
+            currentFeintBehavior = .none
         }
+        
+        let isLeft = (currentAimSide == .left)
+        enemyCowboy.animateApproachWithShoulderShift(isLeft: isLeft, duration: activeLevelConfig.handApproachDuration) { [weak self] in
+            guard let self = self, self.flowState == .playing else { return }
+            
+            switch self.currentFeintBehavior {
+            case .none:
+                self.executeEnemyFire()
+            case .trueSwitch:
+                self.executeAnticipatedSwitch(fromLeft: isLeft)
+            case .fakeHesitation:
+                self.executeFakeHesitation(fromLeft: isLeft)
+            }
+        }
+    }
+    
+    private func executeAnticipatedSwitch(fromLeft: Bool) {
+        lightHaptic.impactOccurred(intensity: 0.35)
+        enemyCowboy.playRaisedShoulderAnticipation(isLeftGoingToSwitch: fromLeft) { [weak self] in
+            guard let self = self, self.flowState == .playing else { return }
+            
+            self.heavyHaptic.impactOccurred(intensity: 0.6)
+            self.popEitssJuice()
+            
+            let switchSpeed = max(0.08, self.activeLevelConfig.handApproachDuration * 0.6)
+            self.enemyCowboy.snapSwitchHands(fromLeftToRight: fromLeft, duration: switchSpeed) {
+                self.currentAimSide = self.currentAimSide.opposite
+                guard self.flowState == .playing else { return }
+                self.executeEnemyFire()
+            }
+        }
+    }
+    
+    private func executeFakeHesitation(fromLeft: Bool) {
+        lightHaptic.impactOccurred(intensity: 0.35)
+        enemyCowboy.playRaisedShoulderAnticipation(isLeftGoingToSwitch: fromLeft) { [weak self] in
+            guard let self = self, self.flowState == .playing else { return }
+            
+            self.run(SKAction.sequence([
+                SKAction.wait(forDuration: 0.08),
+                SKAction.run {
+                    self.executeEnemyFire()
+                }
+            ]))
+        }
+    }
+    
+    private func executeEnemyFire() {
+        duelPhase = .shooting
+        let isLeft = (currentAimSide == .left)
+        
+        enemyCowboy.drawGunAndShoot(isLeft: isLeft)
+        triggerEnemyFireJuice(fromLeft: isLeft)
+        
+        bulletFiredTime = CACurrentMediaTime()
+        bulletFlightDuration = activeLevelConfig.bulletSpeedDuration
+        
+        spawnStraightBullet(fromLeft: isLeft, duration: bulletFlightDuration)
+        
+        run(SKAction.sequence([
+            SKAction.wait(forDuration: bulletFlightDuration),
+            SKAction.run { [weak self] in self?.evaluateDodgeResult() }
+        ]))
+    }
+    
+    // MARK: - Juice Musuh & Efek Visual
+    private func startEnemyIdleBreathing() {
+        enemyCowboy.removeAction(forKey: "enemyBreath")
+        let breathUp = SKAction.moveBy(x: 0, y: 2.5, duration: 0.65)
+        breathUp.timingMode = .easeInEaseOut
+        let breathDown = SKAction.moveBy(x: 0, y: -2.5, duration: 0.65)
+        breathDown.timingMode = .easeInEaseOut
+        
+        enemyCowboy.run(SKAction.repeatForever(SKAction.sequence([breathUp, breathDown])), withKey: "enemyBreath")
+    }
+    
+    private func stopEnemyIdleBreathing() {
+        enemyCowboy.removeAction(forKey: "enemyBreath")
+    }
+    
+    private func triggerEnemyFireJuice(fromLeft: Bool) {
+        let gunX = enemyCowboy.position.x + (fromLeft ? -22 : 22)
+        let gunY = enemyCowboy.position.y - 18
+        
+        spawnBulletCasingJuice(gunX: gunX, gunY: gunY, fromLeft: fromLeft)
+        
+        let flash = SKShapeNode(circleOfRadius: 9)
+        flash.fillColor = SKColor(red: 0.98, green: 0.88, blue: 0.35, alpha: 0.95)
+        flash.strokeColor = .white
+        flash.lineWidth = 1.5
+        flash.position = CGPoint(x: gunX, y: gunY)
+        flash.zPosition = 40
+        addChild(flash)
+        
+        flash.run(SKAction.sequence([
+            SKAction.scale(to: 1.8, duration: 0.04),
+            SKAction.fadeOut(withDuration: 0.06),
+            SKAction.removeFromParent()
+        ]))
+        
+        enemyCowboy.run(SKAction.sequence([
+            SKAction.moveBy(x: 0, y: 6, duration: 0.04),
+            SKAction.moveBy(x: 0, y: -6, duration: 0.08)
+        ]))
+        
+        for i in 0..<3 {
+            let smoke = SKShapeNode(circleOfRadius: 2.8)
+            smoke.fillColor = SKColor(white: 0.35, alpha: 0.5)
+            smoke.strokeColor = .clear
+            smoke.position = CGPoint(x: gunX + CGFloat.random(in: -3...3), y: gunY + CGFloat(i * 3))
+            smoke.zPosition = 38
+            addChild(smoke)
+            
+            smoke.run(SKAction.sequence([
+                SKAction.group([
+                    SKAction.moveBy(x: CGFloat.random(in: -5...5), y: 18, duration: 0.35),
+                    SKAction.scale(to: 2.2, duration: 0.35),
+                    SKAction.fadeOut(withDuration: 0.35)
+                ]),
+                SKAction.removeFromParent()
+            ]))
+        }
+        
+        lightHaptic.impactOccurred(intensity: 0.6)
+    }
+    
+    private func spawnBulletCasingJuice(gunX: CGFloat, gunY: CGFloat, fromLeft: Bool) {
+        let casing = SKShapeNode(rectOf: CGSize(width: 3.2, height: 7.0), cornerRadius: 1.0)
+        casing.fillColor = SKColor(red: 0.92, green: 0.78, blue: 0.28, alpha: 1.0)
+        casing.strokeColor = SKColor(red: 0.50, green: 0.38, blue: 0.10, alpha: 1.0)
+        casing.lineWidth = 0.5
+        casing.position = CGPoint(x: gunX, y: gunY)
+        casing.zPosition = 36
+        addChild(casing)
+        
+        let ejectDir: CGFloat = fromLeft ? -1.0 : 1.0
+        let tossPeak = CGPoint(x: gunX + ejectDir * 24, y: gunY + 20)
+        let landPoint = CGPoint(x: gunX + ejectDir * 42, y: gunY - 14)
+        
+        let arcUp = SKAction.move(to: tossPeak, duration: 0.10)
+        arcUp.timingMode = .easeOut
+        let arcDown = SKAction.move(to: landPoint, duration: 0.14)
+        arcDown.timingMode = .easeIn
+        let spin = SKAction.rotate(byAngle: ejectDir * CGFloat.pi * 3.5, duration: 0.24)
+        
+        let bounce = SKAction.sequence([
+            SKAction.moveBy(x: ejectDir * 6, y: 5, duration: 0.06),
+            SKAction.moveBy(x: ejectDir * 4, y: -5, duration: 0.06)
+        ])
+        
+        let toss = SKAction.group([SKAction.sequence([arcUp, arcDown, bounce]), spin])
+        let fadeOut = SKAction.fadeOut(withDuration: 0.4)
+        casing.run(SKAction.sequence([toss, fadeOut, SKAction.removeFromParent()]))
+    }
+    
+    private func triggerEnemyShockReaction() {
+        enemyCowboy.run(SKAction.sequence([
+            SKAction.group([
+                SKAction.moveBy(x: 0, y: -8, duration: 0.07),
+                SKAction.scaleX(to: 1.45, y: 1.25, duration: 0.07)
+            ]),
+            SKAction.group([
+                SKAction.moveBy(x: 0, y: 8, duration: 0.12),
+                SKAction.scale(to: 1.35, duration: 0.12)
+            ])
+        ]))
+    }
+    
+    private func popEitssJuice() {
+        let eitssLabel = SKLabelNode(fontNamed: "HelveticaNeue-Black")
+        eitssLabel.text = "EITSS!"
+        eitssLabel.fontSize = 26
+        eitssLabel.fontColor = SKColor.systemOrange
+        eitssLabel.position = CGPoint(x: enemyCowboy.position.x, y: enemyCowboy.position.y + 46)
+        eitssLabel.zPosition = 140
+        eitssLabel.setScale(0.4)
+        addChild(eitssLabel)
+        
+        let pop = SKAction.sequence([
+            SKAction.group([
+                SKAction.scale(to: 1.3, duration: 0.08),
+                SKAction.moveBy(x: 0, y: 12, duration: 0.08)
+            ]),
+            SKAction.scale(to: 1.0, duration: 0.06),
+            SKAction.wait(forDuration: 0.28),
+            SKAction.group([
+                SKAction.moveBy(x: 0, y: 16, duration: 0.18),
+                SKAction.fadeOut(withDuration: 0.18)
+            ]),
+            SKAction.removeFromParent()
+        ])
+        eitssLabel.run(pop)
+    }
+    
+    // MARK: - Efek Peluru & Tumbukan
+    private func spawnStraightBullet(fromLeft: Bool, duration: TimeInterval) {
+        let bulletX = enemyCowboy.position.x + (fromLeft ? -22 : 22)
+        let startY = enemyCowboy.position.y - 18
+        let targetY: CGFloat = 110.0
+        
+        let bulletContainer = SKNode()
+        bulletContainer.position = CGPoint(x: bulletX, y: startY)
+        bulletContainer.zPosition = 35
+        addChild(bulletContainer)
+        
+        let trail = SKShapeNode(rectOf: CGSize(width: 2.5, height: 28), cornerRadius: 1)
+        trail.fillColor = SKColor(white: 0.2, alpha: 0.35)
+        trail.strokeColor = .clear
+        trail.position = CGPoint(x: 0, y: 12)
+        bulletContainer.addChild(trail)
+        
+        let bullet = SKShapeNode(rectOf: CGSize(width: 3.5, height: 16), cornerRadius: 1.5)
+        bullet.fillColor = .black
+        bullet.strokeColor = .clear
+        bulletContainer.addChild(bullet)
+        
+        let flyAction = SKAction.move(to: CGPoint(x: bulletX, y: targetY), duration: duration)
+        let groundHitAction = SKAction.run { [weak self] in
+            guard let self = self else { return }
+            self.spawnGroundImpactJuice(at: CGPoint(x: bulletX, y: targetY))
+        }
+        
+        bulletContainer.run(SKAction.sequence([flyAction, groundHitAction, SKAction.removeFromParent()]))
+    }
+    
+    private func spawnGroundImpactJuice(at point: CGPoint) {
+        let crater = SKShapeNode(circleOfRadius: 4.5)
+        crater.fillColor = SKColor(white: 0.25, alpha: 0.7)
+        crater.strokeColor = .clear
+        crater.position = point
+        crater.zPosition = 22
+        addChild(crater)
+        
+        crater.run(SKAction.sequence([
+            SKAction.scale(to: 1.6, duration: 0.12),
+            SKAction.fadeOut(withDuration: 0.35),
+            SKAction.removeFromParent()
+        ]))
+        
+        for angle in stride(from: 0.0, to: Double.pi * 2, by: Double.pi / 2) {
+            let spark = SKShapeNode(circleOfRadius: 1.8)
+            spark.fillColor = SKColor(white: 0.3, alpha: 0.8)
+            spark.strokeColor = .clear
+            spark.position = point
+            spark.zPosition = 23
+            addChild(spark)
+            
+            let dist: CGFloat = 16.0
+            let target = CGPoint(x: point.x + CGFloat(cos(angle)) * dist, y: point.y + CGFloat(sin(angle)) * dist * 0.5)
+            spark.run(SKAction.sequence([
+                SKAction.move(to: target, duration: 0.15),
+                SKAction.fadeOut(withDuration: 0.15),
+                SKAction.removeFromParent()
+            ]))
+        }
+    }
+    
+    private func spawnDodgeDust(at point: CGPoint) {
+        for i in [-1.0, 1.0] {
+            let dust = SKShapeNode(circleOfRadius: 3.5)
+            dust.fillColor = SKColor(white: 0.5, alpha: 0.45)
+            dust.strokeColor = .clear
+            dust.position = CGPoint(x: point.x + CGFloat(i * 6), y: point.y - 20)
+            dust.zPosition = 24
+            addChild(dust)
+            
+            dust.run(SKAction.sequence([
+                SKAction.group([
+                    SKAction.moveBy(x: CGFloat(i * 14), y: 4, duration: 0.18),
+                    SKAction.scale(to: 1.8, duration: 0.18),
+                    SKAction.fadeOut(withDuration: 0.18)
+                ]),
+                SKAction.removeFromParent()
+            ]))
+        }
+    }
+    
+    private func spawnCloseCallSparks(at point: CGPoint) {
+        for _ in 0..<7 {
+            let spark = SKShapeNode(rectOf: CGSize(width: 2, height: 6))
+            spark.fillColor = SKColor(red: 0.98, green: 0.85, blue: 0.30, alpha: 0.95)
+            spark.strokeColor = .white
+            spark.lineWidth = 0.5
+            spark.position = point
+            spark.zPosition = 60
+            addChild(spark)
+            
+            let randAngle = Double.random(in: -Double.pi * 0.4...Double.pi * 0.4)
+            let randDist = CGFloat.random(in: 18...38)
+            let endPoint = CGPoint(x: point.x + CGFloat(sin(randAngle)) * randDist,
+                                   y: point.y + CGFloat(cos(randAngle)) * randDist)
+            
+            spark.zRotation = CGFloat(randAngle)
+            spark.run(SKAction.sequence([
+                SKAction.move(to: endPoint, duration: 0.14),
+                SKAction.fadeOut(withDuration: 0.10),
+                SKAction.removeFromParent()
+            ]))
+        }
+    }
+    
+    private func spawnFloatingScorePopup(text: String, color: SKColor, at point: CGPoint) {
+        let popup = SKLabelNode(fontNamed: "HelveticaNeue-Black")
+        popup.text = text
+        popup.fontSize = 20
+        popup.fontColor = color
+        popup.position = CGPoint(x: point.x, y: point.y + 40)
+        popup.zPosition = 130
+        popup.setScale(0.5)
+        addChild(popup)
+        
+        let popAnimation = SKAction.group([
+            SKAction.sequence([
+                SKAction.scale(to: 1.25, duration: 0.08),
+                SKAction.scale(to: 1.0, duration: 0.08),
+                SKAction.moveBy(x: 0, y: 35, duration: 0.45)
+            ]),
+            SKAction.sequence([
+                SKAction.wait(forDuration: 0.35),
+                SKAction.fadeOut(withDuration: 0.25)
+            ])
+        ])
+        popup.run(SKAction.sequence([popAnimation, SKAction.removeFromParent()]))
+    }
+    
+    private func triggerScreenShake(intensity: CGFloat, duration: TimeInterval) {
+        let numberOfShakes = Int(duration / 0.03)
+        var actions: [SKAction] = []
+        for _ in 0..<numberOfShakes {
+            let dx = CGFloat.random(in: -intensity...intensity)
+            let dy = CGFloat.random(in: -intensity * 0.5...intensity * 0.5)
+            actions.append(SKAction.moveBy(x: dx, y: dy, duration: 0.03))
+            actions.append(SKAction.moveBy(x: -dx, y: -dy, duration: 0.03))
+        }
+        run(SKAction.sequence(actions))
     }
     
     // MARK: - Input Pemain
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard let touch = touches.first else { return }
         let loc = touch.location(in: self)
-        let midX = size.width / 2.0
-        let isLeftSide = (loc.x < midX)
+        
+        if flowState == .onboarding {
+            if let btn = welcomeOverlay?.startButton,
+               nodes(at: loc).contains(where: { $0 == btn || $0.inParentHierarchy(btn) }) {
+                lightHaptic.impactOccurred(intensity: 0.8)
+                welcomeOverlay?.dismiss()
+                welcomeOverlay = nil
+            }
+            return
+        }
         
         if flowState == .gameOver {
-            if let restartBtn = gameOverOverlay?.restartButton {
-                let touchedNodes = nodes(at: loc)
-                if touchedNodes.contains(where: { $0 == restartBtn || $0.inParentHierarchy(restartBtn) }) {
-                    lightHaptic.impactOccurred(intensity: 0.8)
-                    resetGame()
-                } else {
-                    restartBtn.run(SKAction.sequence([
-                        SKAction.moveBy(x: -10, y: 0, duration: 0.03),
-                        SKAction.moveBy(x: 20, y: 0, duration: 0.03),
-                        SKAction.moveBy(x: -10, y: 0, duration: 0.03)
-                    ]))
-                }
+            if let btn = gameOverOverlay?.restartButton,
+               nodes(at: loc).contains(where: { $0 == btn || $0.inParentHierarchy(btn) }) {
+                lightHaptic.impactOccurred(intensity: 0.8)
+                gameOverOverlay?.removeFromParent()
+                gameOverOverlay = nil
+                startGame()
             }
             return
         }
         
-        if isTutorialFrozen {
-            if case .tutorial(let step) = flowState {
-                switch step {
-                case .parryRight:
-                    if !isLeftSide {
-                        isTutorialFrozen = false
-                        tutorialOverlay.hide()
-                        tiltPlayerSword(targetAngle: -GameSettings.playerTiltAngle)
-                        finishTutorialClash(isParry: true, nextStep: .parryLeft)
-                    } else {
-                        showFeedback(text: "TAP SISI KANAN!", color: .systemOrange)
-                        tutorialOverlay.shakeBox()
-                    }
-                case .parryLeft:
-                    if isLeftSide {
-                        isTutorialFrozen = false
-                        tutorialOverlay.hide()
-                        tiltPlayerSword(targetAngle: GameSettings.playerTiltAngle)
-                        finishTutorialClash(isParry: true, nextStep: .holdRight)
-                    } else {
-                        showFeedback(text: "TAP SISI KIRI!", color: .systemOrange)
-                        tutorialOverlay.shakeBox()
-                    }
-                case .holdRight:
-                    if isLeftSide {
-                        showFeedback(text: "TAHAN SISI KANAN!", color: .systemCyan)
-                        tutorialOverlay.shakeBox()
-                    } else {
-                        isHoldingRight = true
-                        tiltPlayerSword(targetAngle: -GameSettings.playerTiltAngle)
-                        triggerEnemyAttackWhileHolding(step: .holdRight, nextStep: .holdLeft)
-                    }
-                case .holdLeft:
-                    if !isLeftSide {
-                        showFeedback(text: "TAHAN SISI KIRI!", color: .systemCyan)
-                        tutorialOverlay.shakeBox()
-                    } else {
-                        isHoldingLeft = true
-                        tiltPlayerSword(targetAngle: GameSettings.playerTiltAngle)
-                        triggerEnemyAttackWhileHolding(step: .holdLeft, nextStep: .completed)
-                    }
-                case .completed: break
-                }
+        guard !hasDodgedThisRound else { return }
+        touchStartPoint = loc
+        hasSwipedInCurrentTouch = false
+    }
+    
+    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
+        guard !hasDodgedThisRound, !hasSwipedInCurrentTouch,
+              let start = touchStartPoint, let touch = touches.first else { return }
+        
+        let current = touch.location(in: self)
+        let deltaX = current.x - start.x
+        let deltaY = current.y - start.y
+        
+        if abs(deltaX) > minSwipeDistance && abs(deltaX) > abs(deltaY) {
+            hasSwipedInCurrentTouch = true
+            handleSwipeAction(side: deltaX > 0 ? .right : .left)
+        }
+    }
+    
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+        if !hasDodgedThisRound, !hasSwipedInCurrentTouch,
+           let start = touchStartPoint, let touch = touches.first {
+            let current = touch.location(in: self)
+            let deltaX = current.x - start.x
+            let deltaY = current.y - start.y
+            
+            if abs(deltaX) > minSwipeDistance && abs(deltaX) > abs(deltaY) {
+                hasSwipedInCurrentTouch = true
+                handleSwipeAction(side: deltaX > 0 ? .right : .left)
             }
+        }
+        touchStartPoint = nil
+    }
+    
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
+        touchStartPoint = nil
+        hasSwipedInCurrentTouch = false
+    }
+    
+    private func handleSwipeAction(side: ShootSide) {
+        if case .tutorial(let step) = flowState {
+            handleTutorialSwipe(side: side, step: step)
             return
         }
-        
         guard flowState == .playing else { return }
-        let tappedSide: CombatSide = isLeftSide ? .left : .right
+        dodgePlayer(to: side)
+    }
+    
+    private func dodgePlayer(to side: ShootSide) {
+        hasDodgedThisRound = true
+        playerDodgedSide = side
+        playerDodgeTime = CACurrentMediaTime()
         
-        if isLeftSide {
-            isHoldingLeft = true
-            isHoldingRight = false
-            tiltPlayerSword(targetAngle: GameSettings.playerTiltAngle)
-        } else {
-            isHoldingRight = true
-            isHoldingLeft = false
-            tiltPlayerSword(targetAngle: -GameSettings.playerTiltAngle)
-        }
-        
-        // Instant Tap Parry
-        if duelPhase == .slashing {
-            let requiresRight = (currentAttack == .leftToRight)
-            let isCorrectSide = (tappedSide == (requiresRight ? .right : .left))
-            if isCorrectSide {
-                enemySwordSprite.removeAllActions()
-                triggerPerfectParry()
-                return
+        if duelPhase == .shooting {
+            let timeElapsed = playerDodgeTime - bulletFiredTime
+            let timeRemaining = bulletFlightDuration - timeElapsed
+            let perfectWindow = max(0.060, bulletFlightDuration * 0.42)
+            
+            if timeRemaining > 0 && timeRemaining <= perfectWindow {
+                isCloseCallDodge = true
             } else {
-                enemySwordSprite.removeAllActions()
-                handlePlayerTakeDamage()
-                return
+                isCloseCallDodge = false
             }
+        } else {
+            isCloseCallDodge = false
         }
+        
+        spawnDodgeDust(at: playerCowboy.position)
+        
+        playerCowboy.removeAction(forKey: "dodge")
+        playerCowboy.removeAction(forKey: "squash")
+        
+        let midX = size.width / 2.0
+        let targetX = midX + (side == .left ? -dodgeOffsetDistance : dodgeOffsetDistance)
+        
+        let squashTakeoff = SKAction.scaleX(to: 1.95, y: 1.55, duration: 0.04)
+        let stretchAir = SKAction.scaleX(to: 1.55, y: 1.95, duration: 0.09)
+        let landSquash = SKAction.scaleX(to: 1.95, y: 1.60, duration: 0.06)
+        let settleNormal = SKAction.scale(to: 1.75, duration: 0.08)
+        
+        playerCowboy.run(SKAction.sequence([squashTakeoff, stretchAir, landSquash, settleNormal]), withKey: "squash")
+        
+        let jumpUp = SKAction.move(to: CGPoint(x: targetX, y: 162), duration: 0.09)
+        jumpUp.timingMode = .easeOut
+        let jumpDown = SKAction.move(to: CGPoint(x: targetX, y: 140), duration: 0.08)
+        jumpDown.timingMode = .easeIn
+        
+        let onLanded = SKAction.run { [weak self] in
+            guard let self = self else { return }
+            self.spawnDodgeDust(at: CGPoint(x: targetX, y: 140))
+        }
+        
+        playerCowboy.run(SKAction.sequence([jumpUp, jumpDown, onLanded]), withKey: "dodge")
         lightHaptic.impactOccurred(intensity: 0.4)
     }
     
-    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) { updateTouchRelease(event: event) }
-    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) { updateTouchRelease(event: event) }
-    
-    private func updateTouchRelease(event: UIEvent?) {
-        guard let allTouches = event?.allTouches else {
-            isHoldingLeft = false; isHoldingRight = false
-            returnPlayerSwordToNeutral()
-            return
-        }
+    // MARK: - Evaluasi & Skor
+    private func evaluateDodgeResult() {
+        guard duelPhase == .shooting else { return }
         
-        var left = false; var right = false
-        let midX = size.width / 2.0
-        for touch in allTouches where touch.phase == .began || touch.phase == .moved || touch.phase == .stationary {
-            if touch.location(in: self).x < midX { left = true } else { right = true }
-        }
+        let safeSide: ShootSide = (currentAimSide == .left) ? .right : .left
+        let isSuccess = (playerDodgedSide == safeSide)
         
-        isHoldingLeft = left
-        isHoldingRight = right
-        
-        if !left && !right {
-            returnPlayerSwordToNeutral()
-        } else if left && !right {
-            tiltPlayerSword(targetAngle: GameSettings.playerTiltAngle)
-        } else if right && !left {
-            tiltPlayerSword(targetAngle: -GameSettings.playerTiltAngle)
-        }
-    }
-    
-    private func tiltPlayerSword(targetAngle: CGFloat) {
-        guard let sword = playerSwordSprite else { return }
-        isPlayerTilting = true
-        sword.removeAction(forKey: "idleBob")
-        sword.removeAction(forKey: "tiltAction")
-        sword.removeAction(forKey: "returnAction")
-        
-        let isTiltLeft = (targetAngle > 0)
-        sword.xScale = isTiltLeft ? -1.0 : 1.0
-        
-        let animateTilt = SKAction.animate(with: tiltTextures, timePerFrame: 0.015, resize: false, restore: false)
-        let rotateAction = SKAction.rotate(toAngle: targetAngle, duration: GameSettings.playerTiltDuration)
-        rotateAction.timingMode = .easeOut
-        
-        let guardOffset = CGPoint(x: isTiltLeft ? -15.0 : 15.0, y: 20.0)
-        let moveAction = SKAction.move(to: guardOffset, duration: GameSettings.playerTiltDuration)
-        moveAction.timingMode = .easeOut
-        
-        sword.run(SKAction.group([animateTilt, rotateAction, moveAction]), withKey: "tiltAction")
-    }
-    
-    private func returnPlayerSwordToNeutral() {
-        guard !isHoldingLeft && !isHoldingRight else { return }
-        guard let sword = playerSwordSprite else { return }
-        
-        if isPlayerTilting {
-            sword.removeAction(forKey: "tiltAction")
-            sword.removeAction(forKey: "returnAction")
-            
-            let animateReturn = SKAction.animate(with: returnTextures, timePerFrame: 0.02, resize: false, restore: false)
-            let rotateBack = SKAction.rotate(toAngle: 0, duration: GameSettings.playerResetDuration)
-            let moveBack = SKAction.move(to: .zero, duration: GameSettings.playerResetDuration)
-            
-            let onComplete = SKAction.run { [weak self] in
-                guard let self = self else { return }
-                self.isPlayerTilting = false
-                self.playerSwordSprite.texture = self.idleTexture
-                self.playerSwordSprite.xScale = 1.0
-                self.playerSwordSprite.zRotation = 0
-                self.playerSwordSprite.position = .zero
-                self.startSwordIdleAnimation()
-            }
-            sword.run(SKAction.sequence([SKAction.group([animateReturn, rotateBack, moveBack]), onComplete]), withKey: "returnAction")
+        if isSuccess {
+            handleSuccessfulDodge()
         } else {
-            sword.texture = idleTexture
-            sword.xScale = 1.0
-            sword.zRotation = 0
-            sword.position = .zero
-            startSwordIdleAnimation()
+            handlePlayerHit()
         }
     }
     
-    // MARK: - Siklus Duel
-    private func resetToIdle() {
-        duelPhase = .idleStance
-        statusLabel.text = "BERSIAP..."
-        statusLabel.fontColor = SKColor(white: 0.7, alpha: 1.0)
-        removeAction(forKey: "duelTimer")
+    private func handleSuccessfulDodge() {
+        duelPhase = .standoff
+        totalDuels += 1
         
-        enemySwordSprite.removeAllActions()
-        enemySwordSprite.isHidden = true
-        enemySwordSprite.alpha = 1.0
-        
-        enemySprite.removeAllActions()
-        enemySprite.xScale = GameSettings.enemyScale
-        startEnemyIdleAnimation()
-        
-        if !isHoldingLeft && !isHoldingRight {
-            returnPlayerSwordToNeutral()
-        }
-        
-        let idleDelay: TimeInterval
-        if duelCount < 3 {
-            idleDelay = GameSettings.phase1IdleDuration
-            isFeintAttack = false
-        } else if duelCount < 6 {
-            isFeintAttack = (Double.random(in: 0...1) < GameSettings.feintChancePhase2)
-            idleDelay = (Double.random(in: 0...1) < 0.25) ? 0.6 : GameSettings.phase2NormalWindup + 0.4
+        if isCloseCallDodge {
+            comboCount += 1
+            maxComboInRun = max(maxComboInRun, comboCount)
+            let earnedScore = 100 * comboCount
+            score += earnedScore
+            
+            playerCowboy.playHatGrazedAnimation(isLeftBullet: currentAimSide == .left)
+            
+            self.speed = 0.1
+            self.run(SKAction.sequence([
+                SKAction.wait(forDuration: 0.04),
+                SKAction.run { [weak self] in self?.speed = 1.0 }
+            ]))
+            
+            flashOverlay.alpha = 0.45
+            flashOverlay.run(SKAction.fadeOut(withDuration: 0.15))
+            
+            let sparkPoint = CGPoint(x: playerCowboy.position.x + (currentAimSide == .left ? -18 : 18), y: playerCowboy.position.y + 15)
+            spawnCloseCallSparks(at: sparkPoint)
+            
+            triggerEnemyShockReaction()
+            
+            spawnFloatingScorePopup(text: "+\(earnedScore)!", color: .systemYellow, at: playerCowboy.position)
+            heavyHaptic.impactOccurred(intensity: 1.0)
+            notificationHaptic.notificationOccurred(.success)
         } else {
-            isFeintAttack = (Double.random(in: 0...1) < GameSettings.feintChancePhase3)
-            let roll = Double.random(in: 0...1)
-            if roll < 0.35 { idleDelay = 0.45 }
-            else if roll < 0.70 { idleDelay = 0.80 }
-            else { idleDelay = Double.random(in: GameSettings.phase3LongStandoff) }
+            score += 100
+            heavyHaptic.impactOccurred(intensity: 0.6)
+            spawnFloatingScorePopup(text: "+100", color: .systemCyan, at: playerCowboy.position)
         }
-        
-        let waitAndStart = SKAction.sequence([
-            SKAction.wait(forDuration: idleDelay),
-            SKAction.run { [weak self] in
-                guard let self = self, self.flowState == .playing else { return }
-                self.startWindup()
-            }
-        ])
-        run(waitAndStart, withKey: "duelTimer")
-    }
-    
-    private func startWindup() {
-        duelPhase = .windup
-        currentAttack = Bool.random() ? .leftToRight : .rightToLeft
-        let isRightSide = (currentAttack == .rightToLeft)
-        
-        statusLabel.text = isRightSide ? "AWAS! TEBASAN DARI KANAN!" : "AWAS! TEBASAN DARI KIRI!"
-        statusLabel.fontColor = .systemOrange
-
-        enemySwordSprite.removeAllActions()
-        let startX = isRightSide ? (size.width * 0.65) : (size.width * 0.35)
-        let startY = size.height * 0.44
-        enemySwordSprite.position = CGPoint(x: startX, y: startY)
-        enemySwordSprite.xScale = isRightSide ? GameSettings.enemySwordScale : -GameSettings.enemySwordScale
-        enemySwordSprite.yScale = GameSettings.enemySwordScale
-        enemySwordSprite.texture = enemyWindupTextures.first
-        enemySwordSprite.alpha = 1.0
-        enemySwordSprite.isHidden = false
-
-        let windupDuration = (duelCount < 3) ? GameSettings.phase1WindupDuration : ((duelCount < 6) ? GameSettings.phase2NormalWindup : GameSettings.phase3BlitzDuration)
-
-        enemySprite.removeAction(forKey: "enemyIdle")
-        let baseScale = GameSettings.enemyScale
-        enemySprite.xScale = isRightSide ? baseScale : -baseScale
-        enemySprite.run(AnimationHelper.createAction(textures: enemyWindupBodyTextures, duration: windupDuration))
-
-        let animateWindup = AnimationHelper.createAction(textures: enemyWindupTextures, duration: windupDuration)
-        enemySwordSprite.run(animateWindup) { [weak self] in
-            guard let self = self, self.flowState == .playing else { return }
-            if self.isFeintAttack {
-                self.executeFeintSequence()
-            } else {
-                self.triggerIncomingSlash()
-            }
-        }
-    }
-    
-    private func executeFeintSequence() {
-        heavyHaptic.impactOccurred(intensity: 0.4)
-        showFeedback(text: "EITSS!", color: .systemOrange)
-        statusLabel.text = "EITSS! TAHAN DULU!"
-        statusLabel.fontColor = .systemOrange
-        
-        let pause = SKAction.sequence([
-            SKAction.wait(forDuration: GameSettings.feintPauseDelay),
-            SKAction.run { [weak self] in
-                guard let self = self, self.flowState == .playing else { return }
-                self.triggerIncomingSlash()
-            }
-        ])
-        enemySwordSprite.run(pause)
-    }
-    
-    private func triggerIncomingSlash() {
-        duelPhase = .slashing
-        let isRightSide = (currentAttack == .rightToLeft)
-        statusLabel.text = isRightSide ? "TEKAN KIRI UNTUK PARRY!" : "TEKAN KANAN UNTUK PARRY!"
-        statusLabel.fontColor = .systemRed
-
-        enemySwordSprite.removeAllActions()
-        let slashDuration: TimeInterval = max(GameSettings.slashDurationMinimum, GameSettings.slashDurationInitial - Double(duelCount) * GameSettings.slashScaling)
-
-        let startX = isRightSide ? (size.width * 0.65) : (size.width * 0.35)
-        enemySwordSprite.position = CGPoint(x: startX, y: size.height * 0.44)
-        enemySwordSprite.alpha = 1.0
-        enemySwordSprite.isHidden = false
-
-        let fullCrossTarget = CGPoint(x: isRightSide ? (size.width * 0.20) : (size.width * 0.80), y: size.height * 0.16)
-        enemySprite.run(AnimationHelper.createAction(textures: enemySlashBodyTextures, duration: slashDuration))
-
-        let slashAnim = AnimationHelper.createAction(textures: enemySlashTextures, duration: slashDuration)
-        let slashMove = SKAction.move(to: fullCrossTarget, duration: slashDuration)
-        slashMove.timingMode = .easeIn
-
-        enemySwordSprite.run(SKAction.group([slashAnim, slashMove])) { [weak self] in
-            guard let self = self, self.flowState == .playing else { return }
-            self.evaluateBlockOrDamageResult()
-        }
-    }
-    
-    private func evaluateBlockOrDamageResult() {
-        guard duelPhase == .slashing else { return }
-        let requiresRight = (currentAttack == .leftToRight)
-        let isCorrectHolding = requiresRight ? isHoldingRight : isHoldingLeft
-        if isCorrectHolding { triggerBlock() } else { handlePlayerTakeDamage() }
-    }
-    
-    private func triggerPerfectParry() {
-        duelPhase = .idleStance
-        heavyHaptic.impactOccurred(intensity: 1.0)
-        notificationHaptic.notificationOccurred(.success)
-        CombatEffects.flashScreen(color: .white, in: self)
-        
-        let isRightSide = (currentAttack == .rightToLeft)
-        let clashPoint = CGPoint(x: size.width / 2 + (isRightSide ? 18 : -18), y: size.height * 0.33)
-        
-        enemySprite.run(SKAction.sequence([
-            SKAction.moveBy(x: 0, y: 8, duration: 0.05),
-            SKAction.moveBy(x: 0, y: -8, duration: 0.08)
-        ]))
-        
-        enemySwordSprite.removeAllActions()
-        enemySwordSprite.position = clashPoint
-        CombatEffects.spawnSparks(at: clashPoint, in: self)
-        
-        comboCount += 1
-        maxComboInRun = max(maxComboInRun, comboCount)
-        let gained = GameSettings.baseScorePerParry * max(1, comboCount)
-        score += gained
-        duelCount += 1
         
         if score > bestScore {
             bestScore = score
-            UserDefaults.standard.set(bestScore, forKey: "BestKatanaParryScore")
+            UserDefaults.standard.set(bestScore, forKey: "BestCowboyDodgeScore")
         }
         
-        showFeedback(text: "PERFECT PARRY! +\(gained)", color: .systemYellow)
-        statusLabel.text = "PARRY MENYILANG TELAK!"
-        statusLabel.fontColor = .systemYellow
-        
-        let knockback = SKAction.sequence([
-            SKAction.moveBy(x: isRightSide ? 45 : -45, y: 35, duration: 0.08),
-            SKAction.fadeOut(withDuration: 0.1)
-        ])
-        enemySwordSprite.run(knockback) { [weak self] in
-            guard let self = self else { return }
-            if !self.isHoldingLeft && !self.isHoldingRight { self.returnPlayerSwordToNeutral() }
-            self.resetToIdle()
-        }
-    }
-    
-    private func triggerBlock() {
-        let isRightSide = (currentAttack == .rightToLeft)
-        let blockPoint = CGPoint(x: size.width / 2 + (isRightSide ? 16 : -16), y: size.height * 0.32)
-        
-        enemySwordSprite.removeAllActions()
-        enemySwordSprite.position = blockPoint
-        
-        lightHaptic.impactOccurred(intensity: 0.5)
-        comboCount = 0
-        showFeedback(text: "BLOK (AMAN)", color: .systemCyan)
-        statusLabel.text = "TERTAHAN!"
-        statusLabel.fontColor = .systemCyan
-        
-        CombatEffects.spawnBlockSparks(at: blockPoint, in: self)
-        
-        let pushAngle: CGFloat = isRightSide ? -0.06 : 0.06
-        playerSwordSprite?.run(SKAction.sequence([
-            SKAction.rotate(byAngle: pushAngle, duration: 0.04),
-            SKAction.rotate(byAngle: -pushAngle, duration: 0.06)
+        let nextRoundDelay = max(0.50, 0.75 - Double(activeLevelConfig.level) * 0.05)
+        run(SKAction.sequence([
+            SKAction.wait(forDuration: nextRoundDelay),
+            SKAction.run { [weak self] in self?.resetStandoff() }
         ]))
-        
-        let stallAndSlide = SKAction.sequence([
-            SKAction.wait(forDuration: 0.08),
-            SKAction.group([
-                SKAction.moveBy(x: isRightSide ? 15 : -15, y: 12, duration: 0.14),
-                SKAction.fadeOut(withDuration: 0.14)
-            ])
-        ])
-        
-        enemySwordSprite.run(stallAndSlide) { [weak self] in
-            guard let self = self else { return }
-            if !self.isHoldingLeft && !self.isHoldingRight { self.returnPlayerSwordToNeutral() }
-            self.resetToIdle()
-        }
     }
     
-    private func handlePlayerTakeDamage() {
+    private func handlePlayerHit() {
         playerLives -= 1
         comboCount = 0
-        triggerBloodImpact()
+        
+        heavyHaptic.impactOccurred(intensity: 1.0)
+        notificationHaptic.notificationOccurred(.warning)
+        
+        bloodVignetteSprite.removeAllActions()
+        bloodVignetteSprite.run(SKAction.sequence([
+            SKAction.fadeAlpha(to: 1.0, duration: 0.04),
+            SKAction.wait(forDuration: 0.15),
+            SKAction.run { [weak self] in
+                self?.updateBloodVignetteState()
+            }
+        ]))
+        
+        triggerScreenShake(intensity: 14.0, duration: 0.22)
+        
+        playerCowboy.run(SKAction.sequence([
+            SKAction.group([
+                SKAction.moveBy(x: (currentAimSide == .left ? 12 : -12), y: -8, duration: 0.06),
+                SKAction.colorize(with: .systemRed, colorBlendFactor: 0.8, duration: 0.06)
+            ]),
+            SKAction.group([
+                SKAction.moveBy(x: (currentAimSide == .left ? -12 : 12), y: 8, duration: 0.12),
+                SKAction.colorize(withColorBlendFactor: 0.0, duration: 0.12)
+            ])
+        ]))
         
         if playerLives > 0 {
-            heavyHaptic.impactOccurred(intensity: 0.9)
-            notificationHaptic.notificationOccurred(.warning)
-            CombatEffects.flashScreen(color: SKColor.systemRed.withAlphaComponent(0.6), in: self)
-            
             run(SKAction.sequence([
-                SKAction.moveBy(x: -14, y: 0, duration: 0.04),
-                SKAction.moveBy(x: 28, y: 0, duration: 0.04),
-                SKAction.moveBy(x: -14, y: 0, duration: 0.04)
+                SKAction.wait(forDuration: 0.85),
+                SKAction.run { [weak self] in self?.resetStandoff() }
             ]))
-            
-            showFeedback(text: "TERLUKA! (-1 NYAWA)", color: .systemRed)
-            statusLabel.text = "KENA TEBAS! SISA NYAWA: \(playerLives)"
-            statusLabel.fontColor = .systemRed
-            
-            enemySwordSprite.run(SKAction.fadeOut(withDuration: 0.15)) { [weak self] in
-                self?.resetToIdle()
-            }
         } else {
             triggerGameOver()
         }
@@ -890,55 +1032,19 @@ class GameScene: SKScene {
         flowState = .gameOver
         removeAction(forKey: "duelTimer")
         
-        heavyHaptic.impactOccurred(intensity: 1.0)
+        triggerScreenShake(intensity: 18.0, duration: 0.35)
         notificationHaptic.notificationOccurred(.error)
-        
-        run(SKAction.sequence([
-            SKAction.moveBy(x: -16, y: 0, duration: 0.04),
-            SKAction.moveBy(x: 32, y: 0, duration: 0.04),
-            SKAction.moveBy(x: -16, y: 0, duration: 0.04)
-        ]))
         
         gameOverOverlay?.removeFromParent()
         let overlay = GameOverOverlayNode(
             size: size,
             score: score,
             bestScore: bestScore,
-            duels: duelCount,
+            duels: totalDuels,
             combo: maxComboInRun,
-            textures: gameOverBannerTextures,
             onFinish: {}
         )
         addChild(overlay)
         self.gameOverOverlay = overlay
-    }
-    
-    private func resetGame() {
-        removeAction(forKey: "duelTimer")
-        gameOverOverlay?.removeFromParent()
-        gameOverOverlay = nil
-        
-        flowState = .playing
-        playerLives = GameSettings.maxPlayerLives
-        score = 100
-        comboCount = 0
-        maxComboInRun = 0
-        duelCount = 0
-        
-        returnPlayerSwordToNeutral()
-        resetToIdle()
-    }
-    
-    private func showFeedback(text: String, color: SKColor) {
-        feedbackLabel.removeAllActions()
-        feedbackLabel.text = text
-        feedbackLabel.fontColor = color
-        feedbackLabel.setScale(1.3)
-        feedbackLabel.alpha = 1.0
-        feedbackLabel.run(SKAction.sequence([
-            SKAction.scale(to: 1.0, duration: 0.1),
-            SKAction.wait(forDuration: 0.35),
-            SKAction.fadeOut(withDuration: 0.2)
-        ]))
     }
 }

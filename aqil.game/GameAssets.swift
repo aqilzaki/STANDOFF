@@ -1,10 +1,3 @@
-//
-//  GameAssets.swift
-//  aqil.game
-//
-//  Created by muhammad aqil zaki on 04/09/26.
-//
-
 
 //
 //  GameAssets.swift
