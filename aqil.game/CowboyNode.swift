@@ -157,7 +157,7 @@ class CowboyNode: SKNode {
         let targetActiveShoulder = CGPoint(x: startActiveShoulder.x, y: 9.0)
         
         let startOppShoulder = isLeft ? baseRightShoulder : baseLeftShoulder
-        let targetOppShoulder = CGPoint(x: startOppShoulder.x, y: 18.0) // Bahu lawan naik
+        let targetOppShoulder = CGPoint(x: startOppShoulder.x, y: 15.0) 
         
         let startActiveElbow = isLeft ? wideLeftElbow : wideRightElbow
         let targetActiveElbow = isLeft ? nearLeftElbow : nearRightElbow
