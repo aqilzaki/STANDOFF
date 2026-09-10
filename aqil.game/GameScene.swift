@@ -113,9 +113,12 @@ class GameScene: SKScene {
     // MARK: - Lifecycle
     override func didMove(to view: SKView) {
         SoundManager.shared.preload("bgm.mp3")
+        SoundManager.shared.preload("anginPeluru.mp3")
         SoundManager.shared.preload("gunshot.mp3")
         SoundManager.shared.preload("lonceng.mp3")
         SoundManager.shared.preload("desert_wind.mp3")
+        SoundManager.shared.preload("hit2.mp3")
+        SoundManager.shared.preload("jantungdetak.mp3")
         
         backgroundColor = SKColor(red: 0.94, green: 0.91, blue: 0.85, alpha: 1.0)
         view.isMultipleTouchEnabled = false
@@ -123,7 +126,7 @@ class GameScene: SKScene {
         lightHaptic.prepare()
         heavyHaptic.prepare()
         notificationHaptic.prepare()
-        SoundManager.shared.play("bgm.mp3",volume: 0.3)
+        SoundManager.shared.playBGM("bgm.mp3",volume: 0.15)
         bestScore = UserDefaults.standard.integer(forKey: "BestCowboyDodgeScore")
       
         setupBackground()
@@ -337,8 +340,10 @@ class GameScene: SKScene {
         case 3:
             bloodVignetteSprite.run(SKAction.fadeOut(withDuration: 0.35))
         case 2:
+            SoundManager.shared.play("jantungdetak.mp3",volume: 0.5)
             bloodVignetteSprite.run(SKAction.fadeAlpha(to: 0.58, duration: 0.25))
         case 1:
+            SoundManager.shared.playBGM("jantungdetak.mp3",volume: 0.3)
             let heartbeat = SKAction.repeatForever(SKAction.sequence([
                 SKAction.fadeAlpha(to: 1.0, duration: 0.35),
                 SKAction.fadeAlpha(to: 0.52, duration: 0.45)
@@ -1326,6 +1331,7 @@ class GameScene: SKScene {
             totalDuels += 1
             
             if isCloseCallDodge {
+                SoundManager.shared.play("anginPeluru.mp3")
                 comboCount += 1
                 maxComboInRun = max(maxComboInRun, comboCount)
                 let earnedScore = 100 * comboCount
@@ -1386,7 +1392,7 @@ class GameScene: SKScene {
         
         heavyHaptic.impactOccurred(intensity: 1.0)
         notificationHaptic.notificationOccurred(.warning)
-        
+        SoundManager.shared.play("hit2.mp3",volume: 0.15)
         bloodVignetteSprite.removeAllActions()
         bloodVignetteSprite.run(SKAction.sequence([
             SKAction.fadeAlpha(to: 1.0, duration: 0.04),
