@@ -40,7 +40,7 @@ class GameScene: SKScene {
     
     // Modul UI (Masing-masing di file terpisah)
     private var welcomeOverlay: WelcomeOverlayNode?
-    private var tutorialOverlay: TutorialOverlayNode!
+    private var tutorialOverlay: TutorialOverlayNode1!
     private var gameOverOverlay: GameOverOverlayNode?
     
     // State Duel
@@ -56,6 +56,7 @@ class GameScene: SKScene {
     // State Tutorial
     private var isTutorialFrozen: Bool = false
     private var currentTutorialBullet: SKNode?
+    private var isTutorialChallengeActive: Bool = false
     
     // Level Aktif
     private var activeLevelConfig: LevelConfig = LevelSystem.levels.first!
@@ -105,35 +106,30 @@ class GameScene: SKScene {
     
     // MARK: - Lifecycle
     override func didMove(to view: SKView) {
+        SoundManager.shared.preload("bgm.mp3")
+        SoundManager.shared.preload("gunshot.mp3")
+        SoundManager.shared.preload("lonceng.mp3")
+        
         backgroundColor = SKColor(red: 0.94, green: 0.91, blue: 0.85, alpha: 1.0)
         view.isMultipleTouchEnabled = false
         
         lightHaptic.prepare()
         heavyHaptic.prepare()
         notificationHaptic.prepare()
-        
+        SoundManager.shared.play("bgm.mp3",volume: 0.3)
         bestScore = UserDefaults.standard.integer(forKey: "BestCowboyDodgeScore")
       
-        setupBackground() 
-        setupPaperBorder()
+        setupBackground()
         setupVisualOverlays()
         setupCharacters()
         setupHUD()
         setupTutorial()
         updateHeartsUI()
-        
+    
         run(SKAction.sequence([
             SKAction.wait(forDuration: 0.20),
             SKAction.run { [weak self] in self?.showWelcomeScreen() }
         ]))
-    }
-    
-    private func setupPaperBorder() {
-        let border = SKShapeNode(rect: CGRect(x: 18, y: 25, width: size.width - 36, height: size.height - 50))
-        border.strokeColor = SKColor(white: 0.3, alpha: 0.35)
-        border.lineWidth = 2.0
-        border.zPosition = -1
-        addChild(border)
     }
     
     private func setupVisualOverlays() {
@@ -239,7 +235,7 @@ class GameScene: SKScene {
         }
     
     private func setupTutorial() {
-        tutorialOverlay = TutorialOverlayNode(size: size)
+        tutorialOverlay = TutorialOverlayNode1(size: size)
         addChild(tutorialOverlay)
     }
     
@@ -464,132 +460,260 @@ class GameScene: SKScene {
         ]))
     }
     
-    private func executeTutorialStep(step: CowboyTutorialStep) {
-        flowState = .tutorial(step: step)
-        playerDodgedSide = nil
-        hasDodgedThisRound = false
-        hasSwipedInCurrentTouch = false
-        isTutorialFrozen = false
-        
-        currentTutorialBullet?.removeFromParent()
-        currentTutorialBullet = nil
-        
-        enemyCowboy.setArmsToWideStance()
-        playerCowboy.run(SKAction.move(to: CGPoint(x: size.width / 2, y: 140), duration: 0.15))
-        tutorialOverlay.hide()
-        
-        switch step {
-        case .dodgeRight:
-            currentAimSide = .left
-            enemyCowboy.animateApproachWithShoulderShift(isLeft: true, duration: 0.35) { [weak self] in
-                guard let self = self else { return }
-                self.enemyCowboy.drawGunAndShoot(isLeft: true)
-                self.triggerEnemyFireJuice(fromLeft: true)
-                self.launchTutorialBulletWithFreeze(fromLeft: true, freezeY: 280, promptAction: "SWIPE KANAN ➔", promptSub: "PELURU DI KIRI, LOMPAT KE KANAN!", isRightDodge: true)
-            }
+        private func executeTutorialStep(step: CowboyTutorialStep) {
+            flowState = .tutorial(step: step)
+            playerDodgedSide = nil
+            hasDodgedThisRound = false
+            hasSwipedInCurrentTouch = false
+            isTutorialChallengeActive = false
             
-        case .dodgeLeft:
-            currentAimSide = .right
-            enemyCowboy.animateApproachWithShoulderShift(isLeft: false, duration: 0.35) { [weak self] in
-                guard let self = self else { return }
-                self.enemyCowboy.drawGunAndShoot(isLeft: false)
-                self.triggerEnemyFireJuice(fromLeft: false)
-                self.launchTutorialBulletWithFreeze(fromLeft: false, freezeY: 280, promptAction: "⬅ SWIPE KIRI", promptSub: "PELURU DI KANAN, LOMPAT KE KIRI!", isRightDodge: false)
-            }
+            currentTutorialBullet?.removeFromParent()
+            currentTutorialBullet = nil
             
-        case .feintReaction:
-            currentAimSide = .left
-            enemyCowboy.animateApproachWithShoulderShift(isLeft: true, duration: 0.45) { [weak self] in
-                guard let self = self else { return }
-                self.popEitssJuice()
-                self.heavyHaptic.impactOccurred(intensity: 0.6)
+            enemyCowboy.removeAllActions()
+            enemyCowboy.position = CGPoint(x: size.width / 2, y: size.height * 0.68)
+            enemyCowboy.setArmsToWideStance()
+            playerCowboy.run(SKAction.move(to: CGPoint(x: size.width / 2, y: 140), duration: 0.15))
+            
+            // Jeda 0.4 detik agar pemain siap, lalu musuh LANGSUNG MENEMBAK & PEMAIN SWIPE SENDIRI!
+            run(SKAction.sequence([
+                SKAction.wait(forDuration: 0.40),
+                SKAction.run { [weak self] in
+                    guard let self = self else { return }
+                    switch step {
+                    case .dodgeRight:
+                        self.startChallengeForStep(step: step, command: "SWIPE KANAN ➔", isRight: true)
+                        
+                    case .dodgeLeft:
+                        self.startChallengeForStep(step: step, command: "⬅ SWIPE KIRI", isRight: false)
+                        
+                    case .feintReaction:
+                        self.startChallengeForStep(step: step, command: "⬅ BACA TIPUAN!", isRight: false)
+                        
+                    case .perfectDodge:
+                        self.startChallengeForStep(step: step, command: "⚡ SEKARANG!", isRight: true)
+                        
+                    case .completed:
+                        self.completeTutorialAndStartGame()
+                    }
+                }
+            ]))
+        }
+    
+    /// Menjalankan Tembakan Nyata saat Pemain Simulasi
+    private func startChallengeForStep(step: CowboyTutorialStep, command: String, isRight: Bool) {
+            isTutorialChallengeActive = true
+            tutorialOverlay.showChallengePhase(step: step, command: command, isRight: isRight)
+            
+            fireChallengeShot(step: step, command: command, isRight: isRight)
+        }
+    /// Menembakkan peluru challenge dengan deteksi kena tembak otomatis
+        private func fireChallengeShot(step: CowboyTutorialStep, command: String, isRight: Bool) {
+            guard case .tutorial(let curStep) = flowState, curStep == step else { return }
+            
+            // Reset state ronde tantangan
+            playerDodgedSide = nil
+            hasDodgedThisRound = false
+            hasSwipedInCurrentTouch = false
+            
+            let isLeftShoot = (step == .dodgeRight || step == .perfectDodge)
+            currentAimSide = isLeftShoot ? .left : .right
+            let safeSide: ShootSide = isLeftShoot ? .right : .left
+            
+            enemyCowboy.animateApproachWithShoulderShift(isLeft: isLeftShoot, duration: 0.38) { [weak self] in
+                guard let self = self, self.isTutorialChallengeActive else { return }
                 
-                self.enemyCowboy.snapSwitchHands(fromLeftToRight: true, duration: 0.18) {
-                    self.currentAimSide = .right
-                    self.enemyCowboy.drawGunAndShoot(isLeft: false)
-                    self.triggerEnemyFireJuice(fromLeft: false)
-                    self.launchTutorialBulletWithFreeze(fromLeft: false, freezeY: 260, promptAction: "⬅ SWIPE KIRI!", promptSub: "TIPUAN! TEMBAKAN PINDAH KE KANAN!", isRightDodge: false)
+                if step == .feintReaction {
+                    // Tipuan Eitss: Tangan kiri turun -> batal ganti tembak kanan
+                    self.popEitssJuice()
+                    self.heavyHaptic.impactOccurred(intensity: 0.6)
+                    self.enemyCowboy.snapSwitchHands(fromLeftToRight: true, duration: 0.20) {
+                        self.currentAimSide = .right
+                        self.enemyCowboy.drawGunAndShoot(isLeft: false)
+                        self.triggerEnemyFireJuice(fromLeft: false)
+                        self.launchChallengeBullet(fromLeft: false, safeSide: .left, duration: 0.45, step: step, command: command, isRight: isRight)
+                    }
+                } else if step == .perfectDodge {
+                    // Peluru melambat di depan dada memberi jendela Perfect Dodge
+                    self.enemyCowboy.drawGunAndShoot(isLeft: true)
+                    self.triggerEnemyFireJuice(fromLeft: true)
+                    self.launchChallengeBullet(fromLeft: true, safeSide: .right, duration: 1.20, isSlowMo: true, step: step, command: command, isRight: isRight)
+                } else {
+                    self.enemyCowboy.drawGunAndShoot(isLeft: isLeftShoot)
+                    self.triggerEnemyFireJuice(fromLeft: isLeftShoot)
+                    self.launchChallengeBullet(fromLeft: isLeftShoot, safeSide: safeSide, duration: 0.42, step: step, command: command, isRight: isRight)
+                }
+            }
+        }
+    
+    /// Penanganan saat pemain gagal/tertembak di tutorial (Reset & Tembak Ulang)
+        private func handleTutorialChallengeFailure(for step: CowboyTutorialStep, command: String, isRight: Bool) {
+            guard isTutorialChallengeActive else { return }
+            
+            // 1. Efek kena tembak ringan (tanpa mengurangi nyawa asli)
+            lightHaptic.impactOccurred(intensity: 0.8)
+            notificationHaptic.notificationOccurred(.warning)
+            tutorialOverlay.shakeBanner()
+            
+            playerCowboy.run(SKAction.sequence([
+                SKAction.colorize(with: .systemRed, colorBlendFactor: 0.8, duration: 0.08),
+                SKAction.colorize(withColorBlendFactor: 0.0, duration: 0.12)
+            ]))
+            
+            // 2. Kembalikan posisi pemain ke tengah
+            playerCowboy.run(SKAction.move(to: CGPoint(x: size.width / 2, y: 140), duration: 0.15))
+            
+            // 3. Jeda sejenak, lalu musuh otomatis MENEMBAK ULANG!
+            run(SKAction.sequence([
+                SKAction.wait(forDuration: 0.75),
+                SKAction.run { [weak self] in
+                    guard let self = self, self.isTutorialChallengeActive else { return }
+                    self.fireChallengeShot(step: step, command: command, isRight: isRight)
+                }
+            ]))
+        }
+    
+    private func launchChallengeBullet(fromLeft: Bool, safeSide: ShootSide, duration: TimeInterval, isSlowMo: Bool = false, step: CowboyTutorialStep, command: String, isRight: Bool) {
+            let bulletX = enemyCowboy.position.x + (fromLeft ? -22 : 22)
+            let startY = enemyCowboy.position.y - 18
+            let targetY: CGFloat = 110.0
+            
+            let container = SKNode()
+            container.position = CGPoint(x: bulletX, y: startY)
+            container.zPosition = 35
+            addChild(container)
+            self.currentTutorialBullet = container
+            
+            let trail = SKShapeNode(rectOf: CGSize(width: 2.5, height: 28), cornerRadius: 1)
+            trail.fillColor = SKColor(white: 0.2, alpha: 0.35)
+            trail.strokeColor = .clear
+            trail.position = CGPoint(x: 0, y: 12)
+            container.addChild(trail)
+            
+            let bullet = SKShapeNode(rectOf: CGSize(width: 3.5, height: 16), cornerRadius: 1.5)
+            bullet.fillColor = .black
+            bullet.strokeColor = .clear
+            container.addChild(bullet)
+            
+            let flyAction: SKAction
+            if isSlowMo {
+                // Peluru cepat lalu melambat saat dekat dada
+                let fast = SKAction.move(to: CGPoint(x: bulletX, y: 195), duration: 0.18)
+                let slow = SKAction.move(to: CGPoint(x: bulletX, y: targetY), duration: duration)
+                flyAction = SKAction.sequence([fast, slow])
+            } else {
+                flyAction = SKAction.move(to: CGPoint(x: bulletX, y: targetY), duration: duration)
+            }
+            
+            let evaluateHit = SKAction.run { [weak self] in
+                guard let self = self, self.isTutorialChallengeActive else { return }
+                self.spawnGroundImpactJuice(at: CGPoint(x: bulletX, y: targetY))
+                
+                // Evaluasi: Apakah pemain berhasil melompat ke sisi aman?
+                let isSafe = (self.hasDodgedThisRound && self.playerDodgedSide == safeSide)
+                if !isSafe {
+                    self.handleTutorialChallengeFailure(for: step, command: command, isRight: isRight)
                 }
             }
             
-        case .perfectDodge:
-            currentAimSide = .left
-            enemyCowboy.animateApproachWithShoulderShift(isLeft: true, duration: 0.35) { [weak self] in
-                guard let self = self else { return }
-                self.enemyCowboy.drawGunAndShoot(isLeft: true)
-                self.triggerEnemyFireJuice(fromLeft: true)
-                self.launchTutorialBulletWithFreeze(fromLeft: true, freezeY: 175, promptAction: "⚡ SWIPE SEKARANG!", promptSub: "PELURU SANGAT DEKAT! KOMBO NAIK!", isRightDodge: true)
+            container.run(SKAction.sequence([flyAction, evaluateHit, SKAction.removeFromParent()]))
+        }
+    
+    /// Peluru khusus Step 4: Lingkaran emas berdenyut MENEMPEL pada peluru yang merayap lambat
+        private func spawnTutorialSlowMoBullet(fromLeft: Bool) {
+            let bulletX = enemyCowboy.position.x + (fromLeft ? -22 : 22)
+            let startY = enemyCowboy.position.y - 18
+            let slowMoY: CGFloat = 195.0
+            let targetY: CGFloat = 110.0
+            
+            let bulletContainer = SKNode()
+            bulletContainer.position = CGPoint(x: bulletX, y: startY)
+            bulletContainer.zPosition = 35
+            addChild(bulletContainer)
+            self.currentTutorialBullet = bulletContainer
+            
+            // Ekor Jejak Peluru
+            let trail = SKShapeNode(rectOf: CGSize(width: 2.5, height: 28), cornerRadius: 1)
+            trail.fillColor = SKColor(white: 0.2, alpha: 0.35)
+            trail.strokeColor = .clear
+            trail.position = CGPoint(x: 0, y: 12)
+            bulletContainer.addChild(trail)
+            
+            // Batang Peluru
+            let bullet = SKShapeNode(rectOf: CGSize(width: 3.5, height: 16), cornerRadius: 1.5)
+            bullet.fillColor = .black
+            bullet.strokeColor = .clear
+            bulletContainer.addChild(bullet)
+            
+            // 💫 1. LINGKARAN BERDENYUT EMAS (Menempel langsung di Peluru)
+            let haloRing = SKShapeNode(circleOfRadius: 22)
+            haloRing.strokeColor = SKColor(red: 0.98, green: 0.85, blue: 0.25, alpha: 0.95)
+            haloRing.lineWidth = 3.0
+            haloRing.fillColor = SKColor(red: 0.98, green: 0.85, blue: 0.25, alpha: 0.18)
+            haloRing.position = CGPoint(x: 0, y: 0) // Pas di titik tengah peluru!
+            haloRing.zPosition = -1
+            haloRing.alpha = 0.0
+            bulletContainer.addChild(haloRing)
+            
+            // 1. Terbang Cepat Menuju Dada
+            let flyFast = SKAction.move(to: CGPoint(x: bulletX, y: slowMoY), duration: 0.20)
+            
+            // 2. Momen Slow-Mo: Lingkaran aktif berdenyut mengikuti peluru yang merayap!
+            let enterSlowMo = SKAction.run { [weak self] in
+                self?.lightHaptic.impactOccurred(intensity: 0.8)
+                haloRing.alpha = 1.0
+                
+                // Denyut membesar-mengecil mengikuti peluru
+                let pulse = SKAction.repeatForever(SKAction.sequence([
+                    SKAction.group([
+                        SKAction.scale(to: 1.45, duration: 0.22),
+                        SKAction.fadeAlpha(to: 0.35, duration: 0.22)
+                    ]),
+                    SKAction.group([
+                        SKAction.scale(to: 0.95, duration: 0.18),
+                        SKAction.fadeAlpha(to: 1.0, duration: 0.18)
+                    ])
+                ]))
+                haloRing.run(pulse)
             }
             
-        case .completed:
-            completeTutorialAndStartGame()
+            let flySlowMo = SKAction.move(to: CGPoint(x: bulletX, y: targetY), duration: 1.25)
+            
+            bulletContainer.run(SKAction.sequence([
+                flyFast,
+                enterSlowMo,
+                flySlowMo,
+                SKAction.run { [weak self] in self?.spawnGroundImpactJuice(at: CGPoint(x: bulletX, y: targetY)) },
+                SKAction.removeFromParent()
+            ]))
         }
-    }
     
-    private func launchTutorialBulletWithFreeze(fromLeft: Bool, freezeY: CGFloat, promptAction: String, promptSub: String, isRightDodge: Bool) {
-        let bulletX = enemyCowboy.position.x + (fromLeft ? -22 : 22)
-        let startY = enemyCowboy.position.y - 18
-        
-        let container = SKNode()
-        container.position = CGPoint(x: bulletX, y: startY)
-        container.zPosition = 35
-        addChild(container)
-        self.currentTutorialBullet = container
-        
-        let bullet = SKShapeNode(rectOf: CGSize(width: 3.5, height: 16), cornerRadius: 1.5)
-        bullet.fillColor = .black
-        bullet.strokeColor = .clear
-        container.addChild(bullet)
-        
-        let flyToFreeze = SKAction.move(to: CGPoint(x: bulletX, y: freezeY), duration: 0.20)
-        let onFreeze = SKAction.run { [weak self] in
-            guard let self = self else { return }
-            self.isTutorialFrozen = true
-            self.lightHaptic.impactOccurred(intensity: 0.6)
-            self.tutorialOverlay.showFreezePrompt(action: promptAction, sub: promptSub, isRight: isRightDodge, screenSize: self.size)
-        }
-        container.run(SKAction.sequence([flyToFreeze, onFreeze]))
-    }
-    
-    private func handleTutorialSwipe(side: ShootSide, step: CowboyTutorialStep) {
-        guard isTutorialFrozen else { return }
-        
-        let isCorrect: Bool
-        switch step {
-        case .dodgeRight:    isCorrect = (side == .right)
-        case .dodgeLeft:     isCorrect = (side == .left)
-        case .feintReaction: isCorrect = (side == .left)
-        case .perfectDodge:  isCorrect = (side == .right)
-        case .completed:     return
-        }
-        
-        if isCorrect {
-            isTutorialFrozen = false
+    // MARK: - Deteksi Swipe Pemain di Challenge
+        private func handleTutorialSwipe(side: ShootSide, step: CowboyTutorialStep) {
+            guard isTutorialChallengeActive, !hasDodgedThisRound else { return }
+            
+            let safeSide: ShootSide = (currentAimSide == .left) ? .right : .left
+            let isCorrect = (side == safeSide)
+            
             hasDodgedThisRound = true
-            tutorialOverlay.hide()
+            playerDodgedSide = side
             dodgePlayer(to: side)
             
-            if step == .perfectDodge {
-                playerCowboy.playHatGrazedAnimation(isLeftBullet: currentAimSide == .left)
-                comboCount = 2
-            }
-            
-            if let bulletNode = currentTutorialBullet {
-                let finishFly = SKAction.move(to: CGPoint(x: bulletNode.position.x, y: 110), duration: 0.12)
-                let groundHit = SKAction.run { [weak self] in
-                    guard let self = self else { return }
-                    self.spawnGroundImpactJuice(at: CGPoint(x: bulletNode.position.x, y: 110))
+            if isCorrect {
+                isTutorialChallengeActive = false
+                
+                if step == .perfectDodge {
+                    playerCowboy.playHatGrazedAnimation(isLeftBullet: currentAimSide == .left)
+                    if let tex = perfectBadgeTex {
+                        triggerPerfectDodgeBadgeJuice(texture: tex)
+                    }
                 }
-                bulletNode.run(SKAction.sequence([finishFly, groundHit, SKAction.removeFromParent()]))
-                currentTutorialBullet = nil
-            }
-            
-            heavyHaptic.impactOccurred(intensity: 0.9)
-            notificationHaptic.notificationOccurred(.success)
-            
-            run(SKAction.sequence([
-                SKAction.wait(forDuration: 0.9),
-                SKAction.run { [weak self] in
+                
+                heavyHaptic.impactOccurred(intensity: 0.9)
+                notificationHaptic.notificationOccurred(.success)
+                
+                // Nyalakan indikator kotak hijau, lalu lanjut ke step berikutnya
+                tutorialOverlay.markStepSuccess(step: step) { [weak self] in
                     guard let self = self else { return }
                     switch step {
                     case .dodgeRight:    self.executeTutorialStep(step: .dodgeLeft)
@@ -599,12 +723,10 @@ class GameScene: SKScene {
                     case .completed: break
                     }
                 }
-            ]))
-        } else {
-            lightHaptic.impactOccurred(intensity: 0.6)
-            tutorialOverlay.shakeBanner()
+            } else {
+                lightHaptic.impactOccurred(intensity: 0.6)
+            }
         }
-    }
     
     private func completeTutorialAndStartGame() {
         tutorialOverlay.hide()
@@ -618,6 +740,7 @@ class GameScene: SKScene {
     }
     
     private func startGame() {
+        SoundManager.shared.play("lonceng.mp3")
         flowState = .playing
         playerLives = 3
         score = 0
@@ -625,6 +748,7 @@ class GameScene: SKScene {
         comboCount = 0
         maxComboInRun = 0
         activeLevelConfig = LevelSystem.levels.first!
+        SoundManager.shared.playBGM("desert_wind.mp3")
         updateBloodVignetteState()
         resetStandoff()
     }
@@ -633,6 +757,7 @@ class GameScene: SKScene {
     private func resetStandoff() {
         duelPhase = .standoff
         playerDodgedSide = nil
+        playerCowboy.animateJumpShadow(isJumping: false)
         hasDodgedThisRound = false
         hasSwipedInCurrentTouch = false
         touchStartPoint = nil
@@ -718,21 +843,27 @@ class GameScene: SKScene {
     }
     
     private func executeEnemyFire() {
+        SoundManager.shared.play("gunshot.mp3")
         duelPhase = .shooting
         let isLeft = (currentAimSide == .left)
         
-        enemyCowboy.drawGunAndShoot(isLeft: isLeft)
-        triggerEnemyFireJuice(fromLeft: isLeft)
-        
-        bulletFiredTime = CACurrentMediaTime()
-        bulletFlightDuration = activeLevelConfig.bulletSpeedDuration
-        
-        spawnStraightBullet(fromLeft: isLeft, duration: bulletFlightDuration)
-        
-        run(SKAction.sequence([
-            SKAction.wait(forDuration: bulletFlightDuration),
-            SKAction.run { [weak self] in self?.evaluateDodgeResult() }
-        ]))
+        enemyCowboy.playPreShootAnticipation(isLeft: isLeft, duration: 0.15) { [weak self] in
+            guard let self = self, self.flowState == .playing else { return }
+            
+            // 2. Tembak & Peluru Meluncur!
+            self.enemyCowboy.drawGunAndShoot(isLeft: isLeft)
+            self.triggerEnemyFireJuice(fromLeft: isLeft)
+            
+            self.bulletFiredTime = CACurrentMediaTime()
+            self.bulletFlightDuration = self.activeLevelConfig.bulletSpeedDuration
+            
+            self.spawnStraightBullet(fromLeft: isLeft, duration: self.bulletFlightDuration)
+            
+            self.run(SKAction.sequence([
+                SKAction.wait(forDuration: self.bulletFlightDuration),
+                SKAction.run { [weak self] in self?.evaluateDodgeResult() }
+            ]))
+        }
     }
     
  
@@ -1095,6 +1226,8 @@ class GameScene: SKScene {
         let midX = size.width / 2.0
         let targetX = midX + (side == .left ? -dodgeOffsetDistance : dodgeOffsetDistance)
         
+        playerCowboy.animateJumpShadow(isJumping: true, jumpHeight: 22.0)
+        
         let squashTakeoff = SKAction.scaleX(to: 1.95, y: 1.55, duration: 0.04)
         let stretchAir = SKAction.scaleX(to: 1.55, y: 1.95, duration: 0.09)
         let landSquash = SKAction.scaleX(to: 1.95, y: 1.60, duration: 0.06)
@@ -1109,6 +1242,7 @@ class GameScene: SKScene {
         
         let onLanded = SKAction.run { [weak self] in
             guard let self = self else { return }
+            self.playerCowboy.animateJumpShadow(isJumping: false)
             self.spawnDodgeDust(at: CGPoint(x: targetX, y: 140))
         }
         
@@ -1147,10 +1281,18 @@ class GameScene: SKScene {
                 
                 playerCowboy.playHatGrazedAnimation(isLeftBullet: currentAimSide == .left)
                 
-                // ❌ SLOW-MO DIHAPUS TOTAL (GAME TETAP 60 FPS RINGAN):
-                // (Hanya flash putih instan & bunga api cepat)
-                flashOverlay.alpha = 0.35
-                flashOverlay.run(SKAction.fadeOut(withDuration: 0.10))
+                self.speed = 0.2
+                let sloMoDuration = 0.1
+                self.run(SKAction.sequence([
+                    SKAction.wait(forDuration: sloMoDuration),
+                    SKAction.run { [weak self] in
+                        self?.speed = 1.0
+                    }
+                ]))
+                
+                // Efek Flash diperbesar opacity-nya sedikit biar lebih dramatis saat slo-mo
+                flashOverlay.alpha = 0.55
+                flashOverlay.run(SKAction.fadeOut(withDuration: 0.15)) // Akan melambat juga karena self.speed
                 
                 let sparkPoint = CGPoint(x: playerCowboy.position.x + (currentAimSide == .left ? -18 : 18), y: playerCowboy.position.y + 15)
                 spawnCloseCallSparks(at: sparkPoint)
@@ -1161,6 +1303,7 @@ class GameScene: SKScene {
                 heavyHaptic.impactOccurred(intensity: 1.0)
                 notificationHaptic.notificationOccurred(.success)
             } else {
+                comboCount = 0
                 score += 100
                 heavyHaptic.impactOccurred(intensity: 0.6)
                 spawnFloatingScorePopup(text: "+100", color: .systemCyan, at: playerCowboy.position)
@@ -1171,7 +1314,8 @@ class GameScene: SKScene {
                 UserDefaults.standard.set(bestScore, forKey: "BestCowboyDodgeScore")
             }
             
-            // Jeda menuju ronde berikutnya berjalan normal tanpa tertahan
+            // Jeda menuju ronde berikutnya (Karena ada slo-mo, waktu jeda ini otomatis
+            // terasa lebih panjang jika bertabrakan dengan timing slo-mo, memberi 'breathing room' yang pas)
             let nextRoundDelay = max(0.50, 0.75 - Double(activeLevelConfig.level) * 0.05)
             run(SKAction.sequence([
                 SKAction.wait(forDuration: nextRoundDelay),
