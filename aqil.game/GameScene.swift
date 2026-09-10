@@ -90,14 +90,20 @@ class GameScene: SKScene {
     private var totalDuels: Int = 0
     
     // HUD Nodes Minimalis
-    private let scoreLabel = SKLabelNode(fontNamed: "HelveticaNeue-Black")
-    private let bestScoreLabel = SKLabelNode(fontNamed: "HelveticaNeue-Bold")
-    private let comboLabel = SKLabelNode(fontNamed: "HelveticaNeue-Black")
-    private let roundLabel = SKLabelNode(fontNamed: "HelveticaNeue-Bold")
+    private let scoreLabel = SKLabelNode(fontNamed: "AvenirNextCondensed-Heavy")
+    private let bestScoreLabel = SKLabelNode(fontNamed: "AvenirNextCondensed-Heavy")
+    private let comboLabel = SKLabelNode(fontNamed: "AvenirNextCondensed-Heavy")
+    private let roundLabel = SKLabelNode(fontNamed: "AvenirNextCondensed-Heavy")
     
     private var heartSprites: [SKSpriteNode] = []
-        private var heartFullTexture: SKTexture!
-        private var heartEmptyTexture: SKTexture!
+    private var heartFullTexture: SKTexture!
+    private var heartEmptyTexture: SKTexture!
+    
+    //color
+    private let pureBlackColor = UIColor(red: 0.08, green: 0.07, blue: 0.06, alpha: 1.0) // Hex: #141210
+    private let softWhiteColor = UIColor(red: 0.98, green: 0.97, blue: 0.94, alpha: 1.0) // Hex: #FAF7F0
+    private let goldenAmberColor = UIColor(red: 0.96, green: 0.78, blue: 0.24, alpha: 1.0) // Hex: #F5C73D
+    
     
     // Haptics
     private let lightHaptic = UIImpactFeedbackGenerator(style: .light)
@@ -109,6 +115,7 @@ class GameScene: SKScene {
         SoundManager.shared.preload("bgm.mp3")
         SoundManager.shared.preload("gunshot.mp3")
         SoundManager.shared.preload("lonceng.mp3")
+        SoundManager.shared.preload("desert_wind.mp3")
         
         backgroundColor = SKColor(red: 0.94, green: 0.91, blue: 0.85, alpha: 1.0)
         view.isMultipleTouchEnabled = false
@@ -164,75 +171,73 @@ class GameScene: SKScene {
     }
     
     private func setupHUD() {
-            let topMargin: CGFloat = 60.0
-            let sideMargin: CGFloat = 24.0
+        let topMargin: CGFloat = 60.0
+        let sideMargin: CGFloat = 24.0
             
-            bestScoreLabel.text = "BEST: \(bestScore)"
-            bestScoreLabel.fontSize = 14
-            bestScoreLabel.fontColor = SKColor(red: 0.50, green: 0.35, blue: 0.20, alpha: 1.0) // Warna cokelat kulit klasik
-            bestScoreLabel.horizontalAlignmentMode = .left
-            bestScoreLabel.verticalAlignmentMode = .center
-            bestScoreLabel.position = CGPoint(x: sideMargin, y: size.height - topMargin - 4)
-            bestScoreLabel.zPosition = 100
-            addChild(bestScoreLabel)
-            
+        bestScoreLabel.text = "BEST: \(bestScore)"
+        bestScoreLabel.fontSize = 14
+        bestScoreLabel.fontColor = SKColor(red: 0.50, green: 0.35, blue: 0.20, alpha: 1.0) // Warna cokelat kulit klasik
+        bestScoreLabel.horizontalAlignmentMode = .left
+        bestScoreLabel.verticalAlignmentMode = .center
+        bestScoreLabel.position = CGPoint(x: sideMargin, y: size.height - topMargin - 4)
+        bestScoreLabel.zPosition = 100
+        addChild(bestScoreLabel)
          
-            let boardTexture = SKTexture(imageNamed: "score_board")
-            boardTexture.filteringMode = .nearest
+        let boardTexture = SKTexture(imageNamed: "score_board")
+        boardTexture.filteringMode = .nearest
             
-            let boardSize = CGSize(width: 124, height: 72)
-            scoreBoardSprite = SKSpriteNode(texture: boardTexture, size: boardSize)
-            scoreBoardSprite.position = CGPoint(x: size.width / 2, y: size.height - topMargin - 42)
-            scoreBoardSprite.zPosition = 100
-            addChild(scoreBoardSprite)
+        let boardSize = CGSize(width: 124, height: 72)
+        scoreBoardSprite = SKSpriteNode(texture: boardTexture, size: boardSize)
+        scoreBoardSprite.position = CGPoint(x: size.width / 2, y: size.height - topMargin - 42)
+        scoreBoardSprite.zPosition = 100
+        addChild(scoreBoardSprite)
             
-            scoreLabel.text = "\(score)"
-            scoreLabel.fontSize = 32
-            scoreLabel.fontColor = SKColor(red: 0.98, green: 0.94, blue: 0.82, alpha: 1.0) // Krem gading terang
-            scoreLabel.verticalAlignmentMode = .center
-            scoreLabel.horizontalAlignmentMode = .center
-            scoreLabel.position = CGPoint(x: 0, y: -2)
-            scoreLabel.zPosition = 1
-            scoreBoardSprite.addChild(scoreLabel)
+        scoreLabel.text = "\(score)"
+        scoreLabel.fontSize = 32
+        scoreLabel.fontColor = SKColor(red: 0.98, green: 0.94, blue: 0.82, alpha: 1.0) // Krem gading terang
+        scoreLabel.verticalAlignmentMode = .center
+        scoreLabel.horizontalAlignmentMode = .center
+        scoreLabel.position = CGPoint(x: 0, y: -2)
+        scoreLabel.zPosition = 1
+        scoreBoardSprite.addChild(scoreLabel)
             
           
-            heartFullTexture = SKTexture(imageNamed: "heart_full")
-            heartEmptyTexture = SKTexture(imageNamed: "heart_empty")
-            heartFullTexture.filteringMode = .nearest
-            heartEmptyTexture.filteringMode = .nearest
+        heartFullTexture = SKTexture(imageNamed: "heart_full")
+        heartEmptyTexture = SKTexture(imageNamed: "heart_empty")
+        heartFullTexture.filteringMode = .nearest
+        heartEmptyTexture.filteringMode = .nearest
             
-            let heartSize = CGSize(width: 26, height: 26)
-            let spacing: CGFloat = 28.0
-            let startX = size.width - sideMargin - (spacing * 2)
-            let heartY = size.height - topMargin - 4
-            
-            heartSprites.removeAll()
-            for i in 0..<3 {
-                let heart = SKSpriteNode(texture: heartFullTexture)
-                heart.size = heartSize
-                heart.position = CGPoint(x: startX + CGFloat(i) * spacing, y: heartY)
-                heart.zPosition = 100
-                addChild(heart)
-                heartSprites.append(heart)
-            }
-            
-    
-            roundLabel.text = "RONDE 1"
-            roundLabel.fontSize = 12.5
-            roundLabel.fontColor = SKColor(white: 0.40, alpha: 1.0)
-            roundLabel.horizontalAlignmentMode = .center
-            roundLabel.position = CGPoint(x: size.width / 2, y: size.height - topMargin - 86)
-            roundLabel.zPosition = 100
-            addChild(roundLabel)
-            
-            comboLabel.text = ""
-            comboLabel.fontSize = 15
-            comboLabel.fontColor = .systemYellow
-            comboLabel.horizontalAlignmentMode = .center
-            comboLabel.position = CGPoint(x: size.width / 2, y: size.height - topMargin - 106)
-            comboLabel.zPosition = 100
-            addChild(comboLabel)
+        let heartSize = CGSize(width: 26, height: 26)
+        let spacing: CGFloat = 28.0
+        let startX = size.width - sideMargin - (spacing * 2)
+        let heartY = size.height - topMargin - 4
+        
+        heartSprites.removeAll()
+        for i in 0..<3 {
+        let heart = SKSpriteNode(texture: heartFullTexture)
+        heart.size = heartSize
+        heart.position = CGPoint(x: startX + CGFloat(i) * spacing, y: heartY)
+        heart.zPosition = 100
+        addChild(heart)
+        heartSprites.append(heart)
         }
+
+        roundLabel.text = "RONDE 1"
+        roundLabel.fontSize = 12.5
+        roundLabel.fontColor = self.pureBlackColor
+        roundLabel.horizontalAlignmentMode = .center
+        roundLabel.position = CGPoint(x: size.width / 2, y: size.height - topMargin - 86)
+        roundLabel.zPosition = 100
+        addChild(roundLabel)
+            
+        comboLabel.text = ""
+        comboLabel.fontSize = 15
+        comboLabel.fontColor = self.pureBlackColor
+        comboLabel.horizontalAlignmentMode = .center
+        comboLabel.position = CGPoint(x: size.width / 2, y: size.height - topMargin - 106)
+        comboLabel.zPosition = 100
+        addChild(comboLabel)
+    }
     
     private func setupTutorial() {
         tutorialOverlay = TutorialOverlayNode1(size: size)
@@ -473,7 +478,7 @@ class GameScene: SKScene {
             enemyCowboy.removeAllActions()
             enemyCowboy.position = CGPoint(x: size.width / 2, y: size.height * 0.68)
             enemyCowboy.setArmsToWideStance()
-            playerCowboy.run(SKAction.move(to: CGPoint(x: size.width / 2, y: 140), duration: 0.15))
+            playerCowboy.run(SKAction.move(to: CGPoint(x: size.width / 2, y: 140), duration: 1.15))
             
             // Jeda 0.4 detik agar pemain siap, lalu musuh LANGSUNG MENEMBAK & PEMAIN SWIPE SENDIRI!
             run(SKAction.sequence([
@@ -504,7 +509,6 @@ class GameScene: SKScene {
     private func startChallengeForStep(step: CowboyTutorialStep, command: String, isRight: Bool) {
             isTutorialChallengeActive = true
             tutorialOverlay.showChallengePhase(step: step, command: command, isRight: isRight)
-            
             fireChallengeShot(step: step, command: command, isRight: isRight)
         }
     /// Menembakkan peluru challenge dengan deteksi kena tembak otomatis
@@ -531,17 +535,17 @@ class GameScene: SKScene {
                         self.currentAimSide = .right
                         self.enemyCowboy.drawGunAndShoot(isLeft: false)
                         self.triggerEnemyFireJuice(fromLeft: false)
-                        self.launchChallengeBullet(fromLeft: false, safeSide: .left, duration: 0.45, step: step, command: command, isRight: isRight)
+                        self.launchChallengeBullet(fromLeft: false, safeSide: .left, duration: 1.0, step: step, command: command, isRight: isRight)
                     }
                 } else if step == .perfectDodge {
                     // Peluru melambat di depan dada memberi jendela Perfect Dodge
                     self.enemyCowboy.drawGunAndShoot(isLeft: true)
                     self.triggerEnemyFireJuice(fromLeft: true)
-                    self.launchChallengeBullet(fromLeft: true, safeSide: .right, duration: 1.20, isSlowMo: true, step: step, command: command, isRight: isRight)
+                    self.launchChallengeBullet(fromLeft: true, safeSide: .right, duration: 1.45, isSlowMo: true, step: step, command: command, isRight: isRight)
                 } else {
                     self.enemyCowboy.drawGunAndShoot(isLeft: isLeftShoot)
                     self.triggerEnemyFireJuice(fromLeft: isLeftShoot)
-                    self.launchChallengeBullet(fromLeft: isLeftShoot, safeSide: safeSide, duration: 0.42, step: step, command: command, isRight: isRight)
+                    self.launchChallengeBullet(fromLeft: isLeftShoot, safeSide: safeSide, duration: 1.10, step: step, command: command, isRight: isRight)
                 }
             }
         }
@@ -573,34 +577,88 @@ class GameScene: SKScene {
             ]))
         }
     
-    private func launchChallengeBullet(fromLeft: Bool, safeSide: ShootSide, duration: TimeInterval, isSlowMo: Bool = false, step: CowboyTutorialStep, command: String, isRight: Bool) {
+    // MARK: - Peluru Challenge dengan Highlight Terang & Cincin Target
+        private func launchChallengeBullet(fromLeft: Bool, safeSide: ShootSide, duration: TimeInterval, isSlowMo: Bool = false, step: CowboyTutorialStep, command: String, isRight: Bool) {
             let bulletX = enemyCowboy.position.x + (fromLeft ? -22 : 22)
             let startY = enemyCowboy.position.y - 18
             let targetY: CGFloat = 110.0
             
             let container = SKNode()
             container.position = CGPoint(x: bulletX, y: startY)
-            container.zPosition = 35
+            container.zPosition = 45 // Di atas karakter agar selalu terlihat jelas
             addChild(container)
             self.currentTutorialBullet = container
             
-            let trail = SKShapeNode(rectOf: CGSize(width: 2.5, height: 28), cornerRadius: 1)
-            trail.fillColor = SKColor(white: 0.2, alpha: 0.35)
+            let isPerfectStep = (step == .perfectDodge || isSlowMo)
+            
+            // 1. Ekor Jejak Peluru (Menyala Emas saat Perfect Dodge)
+            let trail = SKShapeNode(rectOf: CGSize(width: isPerfectStep ? 3.5 : 2.5, height: 32), cornerRadius: 1.5)
+            trail.fillColor = isPerfectStep ? SKColor(red: 1.0, green: 0.85, blue: 0.20, alpha: 0.55) : SKColor(white: 0.2, alpha: 0.35)
             trail.strokeColor = .clear
-            trail.position = CGPoint(x: 0, y: 12)
+            trail.position = CGPoint(x: 0, y: 14)
             container.addChild(trail)
             
-            let bullet = SKShapeNode(rectOf: CGSize(width: 3.5, height: 16), cornerRadius: 1.5)
+            // 2. Batang Peluru Utama (Outline Emas Menyala)
+            let bullet = SKShapeNode(rectOf: CGSize(width: isPerfectStep ? 4.5 : 3.5, height: 18), cornerRadius: 2.0)
             bullet.fillColor = .black
-            bullet.strokeColor = .clear
+            bullet.strokeColor = isPerfectStep ? SKColor(red: 1.0, green: 0.88, blue: 0.25, alpha: 1.0) : .clear
+            bullet.lineWidth = isPerfectStep ? 2.0 : 0.0
             container.addChild(bullet)
             
+            if isPerfectStep {
+                // A. Cincin Target Utama
+                let targetRing = SKShapeNode(circleOfRadius: 26)
+                targetRing.strokeColor = SKColor(red: 1.0, green: 0.85, blue: 0.20, alpha: 0.95)
+                targetRing.lineWidth = 3.5
+                targetRing.fillColor = SKColor(red: 1.0, green: 0.85, blue: 0.20, alpha: 0.18)
+                targetRing.position = .zero
+                container.addChild(targetRing)
+                
+                // B. 4 Garis Pembidik Target (Crosshair Ticks)
+                for angle in [0.0, Double.pi / 2, Double.pi, Double.pi * 1.5] {
+                    let tick = SKShapeNode(rectOf: CGSize(width: 2.5, height: 8))
+                    tick.fillColor = SKColor(red: 1.0, green: 0.88, blue: 0.25, alpha: 1.0)
+                    tick.strokeColor = .clear
+                    tick.position = CGPoint(x: cos(angle) * 26, y: sin(angle) * 26)
+                    tick.zRotation = CGFloat(angle)
+                    container.addChild(tick)
+                }
+                
+                // C. Gelombang Sonar Radar Membesar (Pulsing Sonar Wave)
+                let sonarWave = SKShapeNode(circleOfRadius: 26)
+                sonarWave.strokeColor = SKColor(red: 1.0, green: 0.85, blue: 0.20, alpha: 0.8)
+                sonarWave.lineWidth = 2.0
+                sonarWave.fillColor = .clear
+                container.addChild(sonarWave)
+                
+                let pulseLoop = SKAction.repeatForever(SKAction.sequence([
+                    SKAction.group([
+                        SKAction.scale(to: 1.85, duration: 0.40),
+                        SKAction.fadeOut(withDuration: 0.40)
+                    ]),
+                    SKAction.run {
+                        sonarWave.setScale(1.0)
+                        sonarWave.alpha = 0.8
+                    }
+                ]))
+                sonarWave.run(pulseLoop)
+                
+                // Denyut Cincin Utama
+                targetRing.run(SKAction.repeatForever(SKAction.sequence([
+                    SKAction.scale(to: 1.15, duration: 0.20),
+                    SKAction.scale(to: 1.0, duration: 0.20)
+                ])))
+            }
+            
+            // 4. Pergerakan Peluru (Cepat lalu Slow-Mo di Depan Dada)
             let flyAction: SKAction
             if isSlowMo {
-                // Peluru cepat lalu melambat saat dekat dada
-                let fast = SKAction.move(to: CGPoint(x: bulletX, y: 195), duration: 0.18)
-                let slow = SKAction.move(to: CGPoint(x: bulletX, y: targetY), duration: duration)
-                flyAction = SKAction.sequence([fast, slow])
+                let fastToChest = SKAction.move(to: CGPoint(x: bulletX, y: 195), duration: 0.38)
+                let triggerSlowMo = SKAction.run { [weak self] in
+                    self?.lightHaptic.impactOccurred(intensity: 0.8)
+                }
+                let slowMoPass = SKAction.move(to: CGPoint(x: bulletX, y: targetY), duration: duration) // Merayap lambat di depan dada
+                flyAction = SKAction.sequence([fastToChest, triggerSlowMo, slowMoPass])
             } else {
                 flyAction = SKAction.move(to: CGPoint(x: bulletX, y: targetY), duration: duration)
             }
@@ -609,7 +667,6 @@ class GameScene: SKScene {
                 guard let self = self, self.isTutorialChallengeActive else { return }
                 self.spawnGroundImpactJuice(at: CGPoint(x: bulletX, y: targetY))
                 
-                // Evaluasi: Apakah pemain berhasil melompat ke sisi aman?
                 let isSafe = (self.hasDodgedThisRound && self.playerDodgedSide == safeSide)
                 if !isSafe {
                     self.handleTutorialChallengeFailure(for: step, command: command, isRight: isRight)
@@ -748,7 +805,7 @@ class GameScene: SKScene {
         comboCount = 0
         maxComboInRun = 0
         activeLevelConfig = LevelSystem.levels.first!
-        SoundManager.shared.playBGM("desert_wind.mp3")
+        SoundManager.shared.playBGM("desert_wind.mp3",volume: 0.15)
         updateBloodVignetteState()
         resetStandoff()
     }
@@ -957,7 +1014,7 @@ class GameScene: SKScene {
     }
     
     private func popEitssJuice() {
-        let eitssLabel = SKLabelNode(fontNamed: "HelveticaNeue-Black")
+        let eitssLabel = SKLabelNode(fontNamed: "AvenirNextCondensed-Heavy")
         eitssLabel.text = "EITSS!"
         eitssLabel.fontSize = 26
         eitssLabel.fontColor = SKColor.systemOrange
@@ -1090,7 +1147,7 @@ class GameScene: SKScene {
     }
     
     private func spawnFloatingScorePopup(text: String, color: SKColor, at point: CGPoint) {
-        let popup = SKLabelNode(fontNamed: "HelveticaNeue-Black")
+        let popup = SKLabelNode(fontNamed: "AvenirNextCondensed-Heavy")
         popup.text = text
         popup.fontSize = 20
         popup.fontColor = color
@@ -1291,22 +1348,22 @@ class GameScene: SKScene {
                 ]))
                 
                 // Efek Flash diperbesar opacity-nya sedikit biar lebih dramatis saat slo-mo
-                flashOverlay.alpha = 0.55
-                flashOverlay.run(SKAction.fadeOut(withDuration: 0.15)) // Akan melambat juga karena self.speed
+               flashOverlay.alpha = 0.25
+                flashOverlay.run(SKAction.fadeOut(withDuration: 0.10)) // Akan melambat juga karena self.speed
                 
                 let sparkPoint = CGPoint(x: playerCowboy.position.x + (currentAimSide == .left ? -18 : 18), y: playerCowboy.position.y + 15)
                 spawnCloseCallSparks(at: sparkPoint)
                 
                 triggerEnemyShockReaction()
                 
-                spawnFloatingScorePopup(text: "+\(earnedScore)!", color: .systemYellow, at: playerCowboy.position)
+                spawnFloatingScorePopup(text: "+\(earnedScore)!", color: self.goldenAmberColor, at: playerCowboy.position)
                 heavyHaptic.impactOccurred(intensity: 1.0)
                 notificationHaptic.notificationOccurred(.success)
             } else {
                 comboCount = 0
                 score += 100
                 heavyHaptic.impactOccurred(intensity: 0.6)
-                spawnFloatingScorePopup(text: "+100", color: .systemCyan, at: playerCowboy.position)
+                spawnFloatingScorePopup(text: "+100", color: self.softWhiteColor, at: playerCowboy.position)
             }
             
             if score > bestScore {
@@ -1363,6 +1420,7 @@ class GameScene: SKScene {
     }
     
     private func triggerGameOver() {
+        SoundManager.shared.stopBGM()
         flowState = .gameOver
         removeAction(forKey: "duelTimer")
         

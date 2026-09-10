@@ -18,7 +18,6 @@ struct LevelConfig {
 }
 
 struct LevelSystem {
-    // ⚙️ Atur tingkatan kecepatan dan kesulitan di sini:
     static let levels: [LevelConfig] = [
         LevelConfig(level: 1, title: "ROOKIE", duelsRequired: 3, standoffDelay: 1.3...1.6, handApproachDuration: 0.55, bulletSpeedDuration: 0.38, feintChance: 0.0, fakeHesitationChance: 0.0),
         LevelConfig(level: 2, title: "GUNSLINGER", duelsRequired: 7, standoffDelay: 0.85...1.15, handApproachDuration: 0.38, bulletSpeedDuration: 0.28, feintChance: 0.35, fakeHesitationChance: 0.15),
