@@ -51,6 +51,7 @@ class GameScene: SKScene {
     private var playerDodgedSide: ShootSide? = nil
     
     private let dodgeOffsetDistance: CGFloat = 52.0
+    private var scoreBoardSprite: SKSpriteNode!
     
     // State Tutorial
     private var isTutorialFrozen: Bool = false
@@ -65,6 +66,9 @@ class GameScene: SKScene {
     private var playerDodgeTime: TimeInterval = 0
     private var isCloseCallDodge: Bool = false
     private var hasDodgedThisRound: Bool = false
+    
+    
+    private var perfectBadgeTex: SKTexture?
     
     // Input Swipe
     private var touchStartPoint: CGPoint?
@@ -89,7 +93,10 @@ class GameScene: SKScene {
     private let bestScoreLabel = SKLabelNode(fontNamed: "HelveticaNeue-Bold")
     private let comboLabel = SKLabelNode(fontNamed: "HelveticaNeue-Black")
     private let roundLabel = SKLabelNode(fontNamed: "HelveticaNeue-Bold")
-    private let livesLabel = SKLabelNode(fontNamed: "HelveticaNeue-Black")
+    
+    private var heartSprites: [SKSpriteNode] = []
+        private var heartFullTexture: SKTexture!
+        private var heartEmptyTexture: SKTexture!
     
     // Haptics
     private let lightHaptic = UIImpactFeedbackGenerator(style: .light)
@@ -106,7 +113,8 @@ class GameScene: SKScene {
         notificationHaptic.prepare()
         
         bestScore = UserDefaults.standard.integer(forKey: "BestCowboyDodgeScore")
-        
+      
+        setupBackground() 
         setupPaperBorder()
         setupVisualOverlays()
         setupCharacters()
@@ -160,59 +168,167 @@ class GameScene: SKScene {
     }
     
     private func setupHUD() {
-        let topMargin: CGFloat = 60.0
-        let sideMargin: CGFloat = 24.0
-        
-        bestScoreLabel.text = "BEST: \(bestScore)"
-        bestScoreLabel.fontSize = 13
-        bestScoreLabel.fontColor = .systemBrown
-        bestScoreLabel.horizontalAlignmentMode = .left
-        bestScoreLabel.position = CGPoint(x: sideMargin, y: size.height - topMargin)
-        bestScoreLabel.zPosition = 100
-        addChild(bestScoreLabel)
-        
-        livesLabel.text = "♥♥♥"
-        livesLabel.fontSize = 18
-        livesLabel.fontColor = .systemRed
-        livesLabel.horizontalAlignmentMode = .right
-        livesLabel.position = CGPoint(x: size.width - sideMargin, y: size.height - topMargin)
-        livesLabel.zPosition = 100
-        addChild(livesLabel)
-        
-        scoreLabel.text = "\(score)"
-        scoreLabel.fontSize = 46
-        scoreLabel.fontColor = .black
-        scoreLabel.position = CGPoint(x: size.width / 2, y: size.height - topMargin - 45)
-        scoreLabel.zPosition = 100
-        addChild(scoreLabel)
-        
-        roundLabel.text = "RONDE 1"
-        roundLabel.fontSize = 13
-        roundLabel.fontColor = SKColor(white: 0.40, alpha: 1.0)
-        roundLabel.position = CGPoint(x: size.width / 2, y: size.height - topMargin - 70)
-        roundLabel.zPosition = 100
-        addChild(roundLabel)
-        
-        comboLabel.text = ""
-        comboLabel.fontSize = 15
-        comboLabel.position = CGPoint(x: size.width / 2, y: size.height - topMargin - 90)
-        comboLabel.zPosition = 100
-        addChild(comboLabel)
-    }
+            let topMargin: CGFloat = 60.0
+            let sideMargin: CGFloat = 24.0
+            
+            bestScoreLabel.text = "BEST: \(bestScore)"
+            bestScoreLabel.fontSize = 14
+            bestScoreLabel.fontColor = SKColor(red: 0.50, green: 0.35, blue: 0.20, alpha: 1.0) // Warna cokelat kulit klasik
+            bestScoreLabel.horizontalAlignmentMode = .left
+            bestScoreLabel.verticalAlignmentMode = .center
+            bestScoreLabel.position = CGPoint(x: sideMargin, y: size.height - topMargin - 4)
+            bestScoreLabel.zPosition = 100
+            addChild(bestScoreLabel)
+            
+         
+            let boardTexture = SKTexture(imageNamed: "score_board")
+            boardTexture.filteringMode = .nearest
+            
+            let boardSize = CGSize(width: 124, height: 72)
+            scoreBoardSprite = SKSpriteNode(texture: boardTexture, size: boardSize)
+            scoreBoardSprite.position = CGPoint(x: size.width / 2, y: size.height - topMargin - 42)
+            scoreBoardSprite.zPosition = 100
+            addChild(scoreBoardSprite)
+            
+            scoreLabel.text = "\(score)"
+            scoreLabel.fontSize = 32
+            scoreLabel.fontColor = SKColor(red: 0.98, green: 0.94, blue: 0.82, alpha: 1.0) // Krem gading terang
+            scoreLabel.verticalAlignmentMode = .center
+            scoreLabel.horizontalAlignmentMode = .center
+            scoreLabel.position = CGPoint(x: 0, y: -2)
+            scoreLabel.zPosition = 1
+            scoreBoardSprite.addChild(scoreLabel)
+            
+          
+            heartFullTexture = SKTexture(imageNamed: "heart_full")
+            heartEmptyTexture = SKTexture(imageNamed: "heart_empty")
+            heartFullTexture.filteringMode = .nearest
+            heartEmptyTexture.filteringMode = .nearest
+            
+            let heartSize = CGSize(width: 26, height: 26)
+            let spacing: CGFloat = 28.0
+            let startX = size.width - sideMargin - (spacing * 2)
+            let heartY = size.height - topMargin - 4
+            
+            heartSprites.removeAll()
+            for i in 0..<3 {
+                let heart = SKSpriteNode(texture: heartFullTexture)
+                heart.size = heartSize
+                heart.position = CGPoint(x: startX + CGFloat(i) * spacing, y: heartY)
+                heart.zPosition = 100
+                addChild(heart)
+                heartSprites.append(heart)
+            }
+            
+    
+            roundLabel.text = "RONDE 1"
+            roundLabel.fontSize = 12.5
+            roundLabel.fontColor = SKColor(white: 0.40, alpha: 1.0)
+            roundLabel.horizontalAlignmentMode = .center
+            roundLabel.position = CGPoint(x: size.width / 2, y: size.height - topMargin - 86)
+            roundLabel.zPosition = 100
+            addChild(roundLabel)
+            
+            comboLabel.text = ""
+            comboLabel.fontSize = 15
+            comboLabel.fontColor = .systemYellow
+            comboLabel.horizontalAlignmentMode = .center
+            comboLabel.position = CGPoint(x: size.width / 2, y: size.height - topMargin - 106)
+            comboLabel.zPosition = 100
+            addChild(comboLabel)
+        }
     
     private func setupTutorial() {
         tutorialOverlay = TutorialOverlayNode(size: size)
         addChild(tutorialOverlay)
     }
     
+    // MARK: - Setup Background Tunggal Ilustrasi Gurun
+        private func setupBackground() {
+            // Warna dasar gelap jika ada sisa ruang di notch/bezel
+            backgroundColor = SKColor(red: 0.10, green: 0.08, blue: 0.06, alpha: 1.0)
+            
+            let bg = SKSpriteNode(imageNamed: "desert_background")
+            bg.position = CGPoint(x: size.width / 2, y: size.height / 2)
+            bg.zPosition = -10 // Paling belakang di balik semua karakter dan peluru
+            
+            // Teknik Aspect Fill: Gambar otomatis memenuhi layar tanpa tertarik/gepeng
+            if let textureSize = bg.texture?.size() {
+                let maxScale = max(size.width / textureSize.width, size.height / textureSize.height)
+                bg.size = CGSize(width: textureSize.width * maxScale, height: textureSize.height * maxScale)
+            } else {
+                bg.size = size
+            }
+            
+            bg.texture?.filteringMode = .nearest
+            addChild(bg)
+        }
+    
+        /// Helper untuk memunculkan objek kaktus/batu lengkap dengan bayangan tanah
+        private func spawnProp(imageName: String,
+                               fallbackCactus: String?,
+                               fallbackRock: String?,
+                               at point: CGPoint,
+                               scale: CGFloat,
+                               alpha: CGFloat = 1.0,
+                               zPosition: CGFloat) {
+            
+            let container = SKNode()
+            container.position = point
+            container.zPosition = zPosition
+            container.alpha = alpha
+            addChild(container)
+            
+            // 1. Bayangan Oval di Tanah (Membuat objek menapak di tanah)
+            let shadowWidth: CGFloat = 68.0 * scale
+            let shadowHeight: CGFloat = 18.0 * scale
+            let shadow = SKShapeNode(ellipseOf: CGSize(width: shadowWidth, height: shadowHeight))
+            shadow.fillColor = SKColor.black.withAlphaComponent(0.14)
+            shadow.strokeColor = .clear
+            shadow.position = CGPoint(x: 0, y: -10 * scale)
+            container.addChild(shadow)
+            
+            // 2. Sprite Objek
+            let sprite = SKSpriteNode(imageNamed: imageName)
+            sprite.texture?.filteringMode = .nearest // Menjaga detail pixel tetap tajam
+            sprite.setScale(scale)
+            sprite.anchorPoint = CGPoint(x: 0.5, y: 0.15)
+            container.addChild(sprite)
+        }
+    
     private func updateHeartsUI() {
-        var hearts = ""
-        for i in 1...3 { hearts += (i <= playerLives) ? "♥ " : "♡ " }
-        livesLabel.text = hearts.trimmingCharacters(in: .whitespaces)
-        livesLabel.fontColor = (playerLives == 3) ? .systemGreen : ((playerLives == 2) ? .systemYellow : .systemRed)
-        
-        updateBloodVignetteState()
-    }
+            guard heartSprites.count == 3 else { return }
+            
+            for (index, heart) in heartSprites.enumerated() {
+                let shouldBeFull = (index < playerLives)
+                
+                if shouldBeFull {
+                    heart.texture = heartFullTexture
+                    heart.alpha = 1.0
+                } else {
+                    // Efek Juice: Jika hati baru saja hilang, beri animasi membal & ganti ke hati kosong
+                    if heart.texture == heartFullTexture {
+                        heart.run(SKAction.sequence([
+                            SKAction.group([
+                                SKAction.scale(to: 1.35, duration: 0.08),
+                                SKAction.colorize(with: .systemRed, colorBlendFactor: 1.0, duration: 0.08)
+                            ]),
+                            SKAction.run { [weak self] in
+                                heart.texture = self?.heartEmptyTexture
+                                heart.colorBlendFactor = 0.0
+                            },
+                            SKAction.scale(to: 1.0, duration: 0.12),
+                            SKAction.fadeAlpha(to: 0.75, duration: 0.1)
+                        ]))
+                    } else {
+                        heart.texture = heartEmptyTexture
+                        heart.alpha = 0.75
+                    }
+                }
+            }
+            
+            updateBloodVignetteState()
+        }
     
     private func updateBloodVignetteState() {
         bloodVignetteSprite.removeAllActions()
@@ -233,12 +349,100 @@ class GameScene: SKScene {
     }
     
     private func updateScoreUI() {
-        scoreLabel.text = "\(score)"
-        scoreLabel.run(SKAction.sequence([
-            SKAction.scale(to: 1.15, duration: 0.08),
-            SKAction.scale(to: 1.0, duration: 0.1)
-        ]))
-    }
+            scoreLabel.text = "\(score)"
+            
+            // Animasi pop/membal pada seluruh papan kayu
+            scoreBoardSprite?.removeAction(forKey: "scoreBounce")
+            let popUp = SKAction.scale(to: 1.12, duration: 0.06)
+            let popDown = SKAction.scale(to: 1.0, duration: 0.08)
+            scoreBoardSprite?.run(SKAction.sequence([popUp, popDown]), withKey: "scoreBounce")
+        }
+    
+    // MARK: - JUICE: Pop-Up Stiker "PERFECT" 
+        private func triggerPerfectDodgeBadgeJuice(texture: SKTexture) {
+            let midX = size.width / 2.0
+            let midY = size.height * 0.50
+            
+            let container = SKNode()
+            container.position = CGPoint(x: midX, y: midY)
+            container.zPosition = 160
+            addChild(container)
+            
+            // 1. Gelombang Kejut Cepat (Shockwave Ring)
+            let shockwave = SKShapeNode(circleOfRadius: 28)
+            shockwave.strokeColor = SKColor(red: 0.98, green: 0.85, blue: 0.28, alpha: 0.95)
+            shockwave.lineWidth = 4.0
+            shockwave.fillColor = .clear
+            container.addChild(shockwave)
+            
+            shockwave.run(SKAction.sequence([
+                SKAction.group([
+                    SKAction.scale(to: 4.8, duration: 0.16),
+                    SKAction.fadeOut(withDuration: 0.16)
+                ]),
+                SKAction.removeFromParent()
+            ]))
+            
+            // 2. Percikan Bintang Emas Cepat
+            for i in 0..<8 {
+                let spark = SKShapeNode(rectOf: CGSize(width: 4.0, height: 12.0))
+                spark.fillColor = SKColor(red: 0.98, green: 0.75, blue: 0.15, alpha: 1.0)
+                spark.strokeColor = .white
+                spark.lineWidth = 0.5
+                
+                let angle = (CGFloat(i) / 8.0) * CGFloat.pi * 2.0
+                spark.zRotation = angle - CGFloat.pi / 2.0
+                container.addChild(spark)
+                
+                let distance: CGFloat = 85.0
+                let targetPoint = CGPoint(x: cos(angle) * distance, y: sin(angle) * distance)
+                spark.run(SKAction.sequence([
+                    SKAction.group([
+                        SKAction.move(to: targetPoint, duration: 0.15),
+                        SKAction.fadeOut(withDuration: 0.15)
+                    ]),
+                    SKAction.removeFromParent()
+                ]))
+            }
+            
+            // 3. Stiker Gambar Utama (Besar, Tegak Lurus, Pop Cepat)
+            texture.filteringMode = .nearest
+            let badge = SKSpriteNode(texture: texture)
+            badge.size = CGSize(width: 220, height: 220)
+            badge.zRotation = 0
+            badge.alpha = 0.0
+            badge.setScale(1.8)
+            container.addChild(badge)
+            
+            // Animasi Cepat & Renyah (Tanpa jeda lama)
+            let slamIn = SKAction.group([
+                SKAction.fadeIn(withDuration: 0.04),
+                SKAction.scale(to: 0.95, duration: 0.07)
+            ])
+            slamIn.timingMode = .easeIn
+            
+            let bounceUp = SKAction.scale(to: 1.05, duration: 0.05)
+            let settle = SKAction.scale(to: 1.0, duration: 0.04)
+            
+            let quickHold = SKAction.wait(forDuration: 0.18) // Tampil singkat, langsung lanjut
+            
+            let quickFadeOut = SKAction.group([
+                SKAction.moveBy(x: 0, y: 20, duration: 0.14),
+                SKAction.scale(to: 1.15, duration: 0.14),
+                SKAction.fadeOut(withDuration: 0.14)
+            ])
+            
+            badge.run(SKAction.sequence([
+                slamIn,
+                bounceUp,
+                settle,
+                quickHold,
+                quickFadeOut,
+                SKAction.removeFromParent()
+            ])) {
+                container.removeFromParent()
+            }
+        }
     
     // MARK: - Welcome & Tutorial Flow
     private func showWelcomeScreen() {
@@ -270,7 +474,6 @@ class GameScene: SKScene {
         currentTutorialBullet?.removeFromParent()
         currentTutorialBullet = nil
         
-        stopEnemyIdleBreathing()
         enemyCowboy.setArmsToWideStance()
         playerCowboy.run(SKAction.move(to: CGPoint(x: size.width / 2, y: 140), duration: 0.15))
         tutorialOverlay.hide()
@@ -443,7 +646,6 @@ class GameScene: SKScene {
         removeAction(forKey: "duelTimer")
         enemyCowboy.setArmsToWideStance()
         playerCowboy.run(SKAction.move(to: CGPoint(x: size.width / 2, y: 140), duration: 0.15))
-        startEnemyIdleBreathing()
         
         let standoffDelay = Double.random(in: activeLevelConfig.standoffDelay)
         run(SKAction.sequence([
@@ -457,7 +659,6 @@ class GameScene: SKScene {
     
     private func startHandApproachingGun() {
         duelPhase = .handApproaching
-        stopEnemyIdleBreathing()
         
         currentAimSide = Bool.random() ? .left : .right
         
@@ -534,20 +735,7 @@ class GameScene: SKScene {
         ]))
     }
     
-    // MARK: - Juice Musuh & Efek Visual
-    private func startEnemyIdleBreathing() {
-        enemyCowboy.removeAction(forKey: "enemyBreath")
-        let breathUp = SKAction.moveBy(x: 0, y: 2.5, duration: 0.65)
-        breathUp.timingMode = .easeInEaseOut
-        let breathDown = SKAction.moveBy(x: 0, y: -2.5, duration: 0.65)
-        breathDown.timingMode = .easeInEaseOut
-        
-        enemyCowboy.run(SKAction.repeatForever(SKAction.sequence([breathUp, breathDown])), withKey: "enemyBreath")
-    }
-    
-    private func stopEnemyIdleBreathing() {
-        enemyCowboy.removeAction(forKey: "enemyBreath")
-    }
+ 
     
     private func triggerEnemyFireJuice(fromLeft: Bool) {
         let gunX = enemyCowboy.position.x + (fromLeft ? -22 : 22)
@@ -943,51 +1131,53 @@ class GameScene: SKScene {
     }
     
     private func handleSuccessfulDodge() {
-        duelPhase = .standoff
-        totalDuels += 1
-        
-        if isCloseCallDodge {
-            comboCount += 1
-            maxComboInRun = max(maxComboInRun, comboCount)
-            let earnedScore = 100 * comboCount
-            score += earnedScore
+            duelPhase = .standoff
+            totalDuels += 1
             
-            playerCowboy.playHatGrazedAnimation(isLeftBullet: currentAimSide == .left)
+            if isCloseCallDodge {
+                comboCount += 1
+                maxComboInRun = max(maxComboInRun, comboCount)
+                let earnedScore = 100 * comboCount
+                score += earnedScore
+                
+                // Pop-up badge menggunakan tekstur yang sudah di-cache (tanpa lag)
+                if let tex = perfectBadgeTex {
+                    triggerPerfectDodgeBadgeJuice(texture: tex)
+                }
+                
+                playerCowboy.playHatGrazedAnimation(isLeftBullet: currentAimSide == .left)
+                
+                // ❌ SLOW-MO DIHAPUS TOTAL (GAME TETAP 60 FPS RINGAN):
+                // (Hanya flash putih instan & bunga api cepat)
+                flashOverlay.alpha = 0.35
+                flashOverlay.run(SKAction.fadeOut(withDuration: 0.10))
+                
+                let sparkPoint = CGPoint(x: playerCowboy.position.x + (currentAimSide == .left ? -18 : 18), y: playerCowboy.position.y + 15)
+                spawnCloseCallSparks(at: sparkPoint)
+                
+                triggerEnemyShockReaction()
+                
+                spawnFloatingScorePopup(text: "+\(earnedScore)!", color: .systemYellow, at: playerCowboy.position)
+                heavyHaptic.impactOccurred(intensity: 1.0)
+                notificationHaptic.notificationOccurred(.success)
+            } else {
+                score += 100
+                heavyHaptic.impactOccurred(intensity: 0.6)
+                spawnFloatingScorePopup(text: "+100", color: .systemCyan, at: playerCowboy.position)
+            }
             
-            self.speed = 0.1
-            self.run(SKAction.sequence([
-                SKAction.wait(forDuration: 0.04),
-                SKAction.run { [weak self] in self?.speed = 1.0 }
+            if score > bestScore {
+                bestScore = score
+                UserDefaults.standard.set(bestScore, forKey: "BestCowboyDodgeScore")
+            }
+            
+            // Jeda menuju ronde berikutnya berjalan normal tanpa tertahan
+            let nextRoundDelay = max(0.50, 0.75 - Double(activeLevelConfig.level) * 0.05)
+            run(SKAction.sequence([
+                SKAction.wait(forDuration: nextRoundDelay),
+                SKAction.run { [weak self] in self?.resetStandoff() }
             ]))
-            
-            flashOverlay.alpha = 0.45
-            flashOverlay.run(SKAction.fadeOut(withDuration: 0.15))
-            
-            let sparkPoint = CGPoint(x: playerCowboy.position.x + (currentAimSide == .left ? -18 : 18), y: playerCowboy.position.y + 15)
-            spawnCloseCallSparks(at: sparkPoint)
-            
-            triggerEnemyShockReaction()
-            
-            spawnFloatingScorePopup(text: "+\(earnedScore)!", color: .systemYellow, at: playerCowboy.position)
-            heavyHaptic.impactOccurred(intensity: 1.0)
-            notificationHaptic.notificationOccurred(.success)
-        } else {
-            score += 100
-            heavyHaptic.impactOccurred(intensity: 0.6)
-            spawnFloatingScorePopup(text: "+100", color: .systemCyan, at: playerCowboy.position)
         }
-        
-        if score > bestScore {
-            bestScore = score
-            UserDefaults.standard.set(bestScore, forKey: "BestCowboyDodgeScore")
-        }
-        
-        let nextRoundDelay = max(0.50, 0.75 - Double(activeLevelConfig.level) * 0.05)
-        run(SKAction.sequence([
-            SKAction.wait(forDuration: nextRoundDelay),
-            SKAction.run { [weak self] in self?.resetStandoff() }
-        ]))
-    }
     
     private func handlePlayerHit() {
         playerLives -= 1
