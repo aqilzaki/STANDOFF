@@ -581,7 +581,7 @@ class GameScene: SKScene {
                 }
             ]))
         }
-    
+    //test
     // MARK: - Peluru Challenge dengan Highlight Terang & Cincin Target
         private func launchChallengeBullet(fromLeft: Bool, safeSide: ShootSide, duration: TimeInterval, isSlowMo: Bool = false, step: CowboyTutorialStep, command: String, isRight: Bool) {
             let bulletX = enemyCowboy.position.x + (fromLeft ? -22 : 22)
