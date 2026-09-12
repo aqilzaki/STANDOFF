@@ -11,6 +11,7 @@ class GameScene: SKScene {
         case onboarding
         case tutorial(step: CowboyTutorialStep)
         case playing
+        case paused
         case gameOver
     }
     
@@ -40,6 +41,7 @@ class GameScene: SKScene {
     
     // Modul UI (Masing-masing di file terpisah)
     private var welcomeOverlay: WelcomeOverlayNode?
+    private var pauseOverlay: PauseOverlayNode?
     private var tutorialOverlay: TutorialOverlayNode1!
     private var gameOverOverlay: GameOverOverlayNode?
     
@@ -55,6 +57,7 @@ class GameScene: SKScene {
     
     // State Tutorial
     private var isTutorialFrozen: Bool = false
+    private var pauseButton: SKSpriteNode!
     private var currentTutorialBullet: SKNode?
     private var isTutorialChallengeActive: Bool = false
     
@@ -110,6 +113,11 @@ class GameScene: SKScene {
     private let heavyHaptic = UIImpactFeedbackGenerator(style: .heavy)
     private let notificationHaptic = UINotificationFeedbackGenerator()
     
+    @objc private func handleAppDidEnterBackground() {
+            if flowState == .playing {
+                pauseGame()
+            }
+        }
     // MARK: - Lifecycle
     override func didMove(to view: SKView) {
         SoundManager.shared.preload("bgm.mp3")
@@ -119,6 +127,9 @@ class GameScene: SKScene {
         SoundManager.shared.preload("desert_wind.mp3")
         SoundManager.shared.preload("hit2.mp3")
         SoundManager.shared.preload("jantungdetak.mp3")
+        
+        NotificationCenter.default.removeObserver(self)
+        NotificationCenter.default.addObserver(self, selector: #selector(handleAppDidEnterBackground), name: UIApplication.didEnterBackgroundNotification, object: nil)
         
         backgroundColor = SKColor(red: 0.94, green: 0.91, blue: 0.85, alpha: 1.0)
         view.isMultipleTouchEnabled = false
@@ -141,6 +152,98 @@ class GameScene: SKScene {
             SKAction.run { [weak self] in self?.showWelcomeScreen() }
         ]))
     }
+    // MARK: - Logika Pause & Resume
+        private func pauseGame() {
+            guard flowState == .playing else { return }
+            flowState = .paused
+            
+            removeAction(forKey: "duelTimer")
+            enemyCowboy.removeAllActions()
+            lightHaptic.impactOccurred(intensity: 0.8)
+            
+            let overlay = PauseOverlayNode(
+                size: size,
+                onResume: { [weak self] in
+                    self?.resumeGameWithCountdown()
+                },
+                onMenu: { [weak self] in
+                    self?.pauseOverlay?.dismiss {
+                        self?.pauseOverlay = nil
+                        self?.showWelcomeScreen()
+                    }
+                }
+            )
+            addChild(overlay)
+            self.pauseOverlay = overlay
+        }
+        
+        private func resumeGameWithCountdown() {
+            pauseOverlay?.dismiss { [weak self] in
+                self?.pauseOverlay = nil
+                
+                self?.startCountdown {
+                    guard let self = self else { return }
+                    self.flowState = .playing
+                    self.resetStandoff()
+                }
+            }
+        }
+        
+        private func startCountdown(completion: @escaping () -> Void) {
+            let countdownLabel = SKLabelNode(fontNamed: "AvenirNextCondensed-Heavy")
+            countdownLabel.fontSize = 68
+            countdownLabel.fontColor = self.goldenAmberColor
+            countdownLabel.position = CGPoint(x: size.width / 2, y: size.height * 0.42)
+            countdownLabel.zPosition = 175
+            addChild(countdownLabel)
+            
+            let countData: [(text: String, duration: Double, isFinal: Bool)] = [
+                ("3", 0.65, false),
+                ("2", 0.65, false),
+                ("1", 0.65, false),
+                ("DUEL!", 0.55, true)
+            ]
+            
+            var actions: [SKAction] = []
+            for item in countData {
+                let stepAction = SKAction.run { [weak self] in
+                    guard let self = self else { return }
+                    countdownLabel.text = item.text
+                    countdownLabel.fontColor = item.isFinal ? SKColor.systemOrange : self.goldenAmberColor
+                    countdownLabel.setScale(0.5)
+                    countdownLabel.alpha = 0.0
+                    
+                    let popIn = SKAction.group([
+                        SKAction.fadeIn(withDuration: 0.08),
+                        SKAction.scale(to: 1.25, duration: 0.12)
+                    ])
+                    let settle = SKAction.scale(to: 1.0, duration: 0.08)
+                    let hold = SKAction.wait(forDuration: item.duration - 0.28)
+                    let fadeOut = SKAction.group([
+                        SKAction.scale(to: 1.45, duration: 0.10),
+                        SKAction.fadeOut(withDuration: 0.10)
+                    ])
+                    countdownLabel.run(SKAction.sequence([popIn, settle, hold, fadeOut]))
+                    
+                    if item.isFinal {
+                        self.heavyHaptic.impactOccurred(intensity: 1.0)
+                        SoundManager.shared.play("lonceng.mp3")
+                    } else {
+                        self.lightHaptic.impactOccurred(intensity: 0.6)
+                        SoundManager.shared.play("lonceng.mp3", pitchRangeCents: 350...500, volume: 0.4)
+                    }
+                }
+                actions.append(stepAction)
+                actions.append(SKAction.wait(forDuration: item.duration))
+            }
+            
+            actions.append(SKAction.run {
+                countdownLabel.removeFromParent()
+                completion()
+            })
+            
+            run(SKAction.sequence(actions))
+        }
     
     private func setupVisualOverlays() {
         let bloodTexture = BloodVignetteHelper.generateTexture(screenSize: size)
@@ -174,73 +277,87 @@ class GameScene: SKScene {
     }
     
     private func setupHUD() {
-        let topMargin: CGFloat = 60.0
-        let sideMargin: CGFloat = 24.0
+            let topMargin: CGFloat = 60.0
+            let sideMargin: CGFloat = 24.0
             
-        bestScoreLabel.text = "BEST: \(bestScore)"
-        bestScoreLabel.fontSize = 14
-        bestScoreLabel.fontColor = SKColor(red: 0.50, green: 0.35, blue: 0.20, alpha: 1.0) // Warna cokelat kulit klasik
-        bestScoreLabel.horizontalAlignmentMode = .left
-        bestScoreLabel.verticalAlignmentMode = .center
-        bestScoreLabel.position = CGPoint(x: sideMargin, y: size.height - topMargin - 4)
-        bestScoreLabel.zPosition = 100
-        addChild(bestScoreLabel)
-         
-        let boardTexture = SKTexture(imageNamed: "score_board")
-        boardTexture.filteringMode = .nearest
+        let pauseTex = SKTexture(imageNamed: "pauseButton")
+                pauseTex.filteringMode = .nearest // Menjaga detail pixel tetap tajam
+                
+                // Atur ukuran tombol di sini (misal: 38 x 38 atau 42 x 42 pt)
+                let buttonSize = CGSize(width: 38, height: 38)
+                pauseButton = SKSpriteNode(texture: pauseTex, size: buttonSize)
+                pauseButton.position = CGPoint(x: sideMargin + 10, y: size.height - topMargin - 4)
+                pauseButton.zPosition = 100
+                addChild(pauseButton)
             
-        let boardSize = CGSize(width: 124, height: 72)
-        scoreBoardSprite = SKSpriteNode(texture: boardTexture, size: boardSize)
-        scoreBoardSprite.position = CGPoint(x: size.width / 2, y: size.height - topMargin - 42)
-        scoreBoardSprite.zPosition = 100
-        addChild(scoreBoardSprite)
+            // ==========================================================
+            // 2. 🪵 PAPAN SKOR UTAMA (Di Tengah Atas)
+            // ==========================================================
+            let boardTexture = SKTexture(imageNamed: "score_board")
+            boardTexture.filteringMode = .nearest
             
-        scoreLabel.text = "\(score)"
-        scoreLabel.fontSize = 32
-        scoreLabel.fontColor = SKColor(red: 0.98, green: 0.94, blue: 0.82, alpha: 1.0) // Krem gading terang
-        scoreLabel.verticalAlignmentMode = .center
-        scoreLabel.horizontalAlignmentMode = .center
-        scoreLabel.position = CGPoint(x: 0, y: -2)
-        scoreLabel.zPosition = 1
-        scoreBoardSprite.addChild(scoreLabel)
+            let boardSize = CGSize(width: 124, height: 72)
+            scoreBoardSprite = SKSpriteNode(texture: boardTexture, size: boardSize)
+            scoreBoardSprite.position = CGPoint(x: size.width / 2, y: size.height - topMargin - 42)
+            scoreBoardSprite.zPosition = 100
+            addChild(scoreBoardSprite)
             
-          
-        heartFullTexture = SKTexture(imageNamed: "heart_full")
-        heartEmptyTexture = SKTexture(imageNamed: "heart_empty")
-        heartFullTexture.filteringMode = .nearest
-        heartEmptyTexture.filteringMode = .nearest
+            scoreLabel.text = "\(score)"
+            scoreLabel.fontSize = 32
+            scoreLabel.fontColor = SKColor(red: 0.98, green: 0.94, blue: 0.82, alpha: 1.0)
+            scoreLabel.verticalAlignmentMode = .center
+            scoreLabel.horizontalAlignmentMode = .center
+            scoreLabel.position = CGPoint(x: 0, y: -2)
+            scoreLabel.zPosition = 1
+            scoreBoardSprite.addChild(scoreLabel)
             
-        let heartSize = CGSize(width: 26, height: 26)
-        let spacing: CGFloat = 28.0
-        let startX = size.width - sideMargin - (spacing * 2)
-        let heartY = size.height - topMargin - 4
+            heartFullTexture = SKTexture(imageNamed: "heart_full")
+            heartEmptyTexture = SKTexture(imageNamed: "heart_empty")
+            heartFullTexture.filteringMode = .nearest
+            heartEmptyTexture.filteringMode = .nearest
+            
+            let heartSize = CGSize(width: 26, height: 26)
+            let spacing: CGFloat = 28.0
+            let startX = size.width - sideMargin - (spacing * 2)
+            let heartY = size.height - topMargin - 4
+            
+            heartSprites.removeAll()
+            for i in 0..<3 {
+                let heart = SKSpriteNode(texture: heartFullTexture)
+                heart.size = heartSize
+                heart.position = CGPoint(x: startX + CGFloat(i) * spacing, y: heartY)
+                heart.zPosition = 100
+                addChild(heart)
+                heartSprites.append(heart)
+            }
+            
         
-        heartSprites.removeAll()
-        for i in 0..<3 {
-        let heart = SKSpriteNode(texture: heartFullTexture)
-        heart.size = heartSize
-        heart.position = CGPoint(x: startX + CGFloat(i) * spacing, y: heartY)
-        heart.zPosition = 100
-        addChild(heart)
-        heartSprites.append(heart)
-        }
-
-        roundLabel.text = "RONDE 1"
-        roundLabel.fontSize = 12.5
-        roundLabel.fontColor = self.pureBlackColor
-        roundLabel.horizontalAlignmentMode = .center
-        roundLabel.position = CGPoint(x: size.width / 2, y: size.height - topMargin - 86)
-        roundLabel.zPosition = 100
-        addChild(roundLabel)
+            bestScoreLabel.text = "BEST: \(bestScore)"
+            bestScoreLabel.fontSize = 11.5
+            bestScoreLabel.fontColor = SKColor(red: 0.50, green: 0.35, blue: 0.20, alpha: 1.0)
+            bestScoreLabel.horizontalAlignmentMode = .right
+            bestScoreLabel.verticalAlignmentMode = .center
+            // Berada tepat di bawah barisan hati (Y: heartY - 22)
+            bestScoreLabel.position = CGPoint(x: size.width - sideMargin, y: heartY - 22)
+            bestScoreLabel.zPosition = 100
+            addChild(bestScoreLabel)
             
-        comboLabel.text = ""
-        comboLabel.fontSize = 15
-        comboLabel.fontColor = self.pureBlackColor
-        comboLabel.horizontalAlignmentMode = .center
-        comboLabel.position = CGPoint(x: size.width / 2, y: size.height - topMargin - 106)
-        comboLabel.zPosition = 100
-        addChild(comboLabel)
-    }
+            roundLabel.text = "RONDE 1"
+            roundLabel.fontSize = 12.5
+            roundLabel.fontColor = self.pureBlackColor
+            roundLabel.horizontalAlignmentMode = .center
+            roundLabel.position = CGPoint(x: size.width / 2, y: size.height - topMargin - 86)
+            roundLabel.zPosition = 100
+            addChild(roundLabel)
+            
+            comboLabel.text = ""
+            comboLabel.fontSize = 15
+            comboLabel.fontColor = self.pureBlackColor
+            comboLabel.horizontalAlignmentMode = .center
+            comboLabel.position = CGPoint(x: size.width / 2, y: size.height - topMargin - 106)
+            comboLabel.zPosition = 100
+            addChild(comboLabel)
+        }
     
     private func setupTutorial() {
         tutorialOverlay = TutorialOverlayNode1(size: size)
@@ -1189,34 +1306,74 @@ class GameScene: SKScene {
     
     // MARK: - Input Pemain
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
-        guard let touch = touches.first else { return }
-        let loc = touch.location(in: self)
-        
-        if flowState == .onboarding {
-            if let btn = welcomeOverlay?.startButton,
-               nodes(at: loc).contains(where: { $0 == btn || $0.inParentHierarchy(btn) }) {
-                lightHaptic.impactOccurred(intensity: 0.8)
-                welcomeOverlay?.dismiss()
-                welcomeOverlay = nil
+            guard let touch = touches.first else { return }
+            let loc = touch.location(in: self)
+            
+            // 1. Sentuhan di Layar Awal (Welcome Screen)
+            if flowState == .onboarding {
+                if let btn = welcomeOverlay?.startButton,
+                   nodes(at: loc).contains(where: { $0 == btn || $0.inParentHierarchy(btn) }) {
+                    lightHaptic.impactOccurred(intensity: 0.8)
+                    welcomeOverlay?.dismiss()
+                    welcomeOverlay = nil
+                    startGame()
+                }
+                return
             }
-            return
-        }
-        
-        if flowState == .gameOver {
-            if let btn = gameOverOverlay?.restartButton,
-               nodes(at: loc).contains(where: { $0 == btn || $0.inParentHierarchy(btn) }) {
-                lightHaptic.impactOccurred(intensity: 0.8)
-                gameOverOverlay?.removeFromParent()
-                gameOverOverlay = nil
-                startGame()
+            
+            // 2. Sentuhan di Menu Pause (Lanjutkan vs Menu Utama)
+            if flowState == .paused {
+                if let resumeBtn = pauseOverlay?.resumeButton,
+                   nodes(at: loc).contains(where: { $0 == resumeBtn || $0.inParentHierarchy(resumeBtn) }) {
+                    lightHaptic.impactOccurred(intensity: 0.8)
+                    resumeGameWithCountdown()
+                } else if let menuBtn = pauseOverlay?.menuButton,
+                          nodes(at: loc).contains(where: { $0 == menuBtn || $0.inParentHierarchy(menuBtn) }) {
+                    lightHaptic.impactOccurred(intensity: 0.6)
+                    pauseOverlay?.dismiss { [weak self] in
+                        self?.pauseOverlay = nil
+                        self?.showWelcomeScreen()
+                    }
+                }
+                return
             }
-            return
+            
+        if flowState == .playing {
+                    if nodes(at: loc).contains(where: { $0 == pauseButton || $0.inParentHierarchy(pauseButton) }) {
+                        lightHaptic.impactOccurred(intensity: 0.8)
+                        pauseButton.removeAction(forKey: "btnPress")
+                        
+                        let pressDown = SKAction.scale(to: 0.85, duration: 0.06)
+                        let bounceBack = SKAction.scale(to: 1.0, duration: 0.08)
+                        let triggerPause = SKAction.run { [weak self] in
+                            print("Tombol Pause Ditekan!")
+                             self?.pauseGame() 
+                        }
+                        
+                        // Masukkan triggerPause ke dalam sequence
+                        pauseButton.run(SKAction.sequence([pressDown, bounceBack, triggerPause]), withKey: "btnPress")
+                        return
+                    }
+                }
+                
+            
+            // 4. Sentuhan Restart di Game Over
+            if flowState == .gameOver {
+                if let btn = gameOverOverlay?.restartButton,
+                   nodes(at: loc).contains(where: { $0 == btn || $0.inParentHierarchy(btn) }) {
+                    lightHaptic.impactOccurred(intensity: 0.8)
+                    gameOverOverlay?.removeFromParent()
+                    gameOverOverlay = nil
+                    startGame()
+                }
+                return
+            }
+            
+            // 5. Input Swipe untuk Menghindar (Dodge)
+            guard !hasDodgedThisRound else { return }
+            touchStartPoint = loc
+            hasSwipedInCurrentTouch = false
         }
-        
-        guard !hasDodgedThisRound else { return }
-        touchStartPoint = loc
-        hasSwipedInCurrentTouch = false
-    }
     
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard !hasDodgedThisRound, !hasSwipedInCurrentTouch,
