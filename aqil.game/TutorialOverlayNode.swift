@@ -29,7 +29,6 @@ private struct SFSymbolHelper {
 
 class TutorialOverlayNode: SKNode {
     
-    // 🏛️ FONT TEGAK LURUS & TEBAL RESMI IOS (Tidak Miring Sama Sekali)
     private let customFontName = "AvenirNextCondensed-Heavy"
     
     private let pureWhiteColor = UIColor(red: 0.98, green: 0.96, blue: 0.92, alpha: 1.0)

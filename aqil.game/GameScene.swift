@@ -127,6 +127,10 @@ class GameScene: SKScene {
         SoundManager.shared.preload("desert_wind.mp3")
         SoundManager.shared.preload("hit2.mp3")
         SoundManager.shared.preload("jantungdetak.mp3")
+        SoundManager.shared.preload("casingBulletDropOnSand.mp3")
+        SoundManager.shared.preload("eits.m4a")
+        SoundManager.shared.preload("ManAfterJumpdrop.mp3")
+
         
         NotificationCenter.default.removeObserver(self)
         NotificationCenter.default.addObserver(self, selector: #selector(handleAppDidEnterBackground), name: UIApplication.didEnterBackgroundNotification, object: nil)
@@ -460,7 +464,7 @@ class GameScene: SKScene {
             SoundManager.shared.play("jantungdetak.mp3",volume: 0.5)
             bloodVignetteSprite.run(SKAction.fadeAlpha(to: 0.58, duration: 0.25))
         case 1:
-            SoundManager.shared.playBGM("jantungdetak.mp3",volume: 0.3)
+            SoundManager.shared.playBGM("jantungdetak.mp3",volume: 0.6)
             let heartbeat = SKAction.repeatForever(SKAction.sequence([
                 SKAction.fadeAlpha(to: 1.0, duration: 0.35),
                 SKAction.fadeAlpha(to: 0.52, duration: 0.45)
@@ -675,7 +679,7 @@ class GameScene: SKScene {
     /// Penanganan saat pemain gagal/tertembak di tutorial (Reset & Tembak Ulang)
         private func handleTutorialChallengeFailure(for step: CowboyTutorialStep, command: String, isRight: Bool) {
             guard isTutorialChallengeActive else { return }
-            
+            SoundManager.shared.play("hit.mp3")
             // 1. Efek kena tembak ringan (tanpa mengurangi nyawa asli)
             lightHaptic.impactOccurred(intensity: 0.8)
             notificationHaptic.notificationOccurred(.warning)
@@ -1022,7 +1026,6 @@ class GameScene: SKScene {
     }
     
     private func executeEnemyFire() {
-        SoundManager.shared.play("gunshot.mp3")
         duelPhase = .shooting
         let isLeft = (currentAimSide == .left)
         
@@ -1048,6 +1051,7 @@ class GameScene: SKScene {
  
     
     private func triggerEnemyFireJuice(fromLeft: Bool) {
+        SoundManager.shared.play("gunshot.mp3")
         let gunX = enemyCowboy.position.x + (fromLeft ? -22 : 22)
         let gunY = enemyCowboy.position.y - 18
         
@@ -1136,6 +1140,8 @@ class GameScene: SKScene {
     }
     
     private func popEitssJuice() {
+        SoundManager.shared.play("eits.m4a", volume: 0.2)
+        
         let eitssLabel = SKLabelNode(fontNamed: "AvenirNextCondensed-Heavy")
         eitssLabel.text = "EITSS!"
         eitssLabel.fontSize = 26
@@ -1464,7 +1470,8 @@ class GameScene: SKScene {
             self.playerCowboy.animateJumpShadow(isJumping: false)
             self.spawnDodgeDust(at: CGPoint(x: targetX, y: 140))
         }
-        
+        SoundManager.shared.play("ManAfterJumpdrop.mp3",pitchRangeCents: -40...40,volume: 0.2)
+
         playerCowboy.run(SKAction.sequence([jumpUp, jumpDown, onLanded]), withKey: "dodge")
         lightHaptic.impactOccurred(intensity: 0.4)
     }
